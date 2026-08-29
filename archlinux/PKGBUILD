@@ -26,7 +26,7 @@
 
 pkgname=indicator-china-weather
 pkgver=3.1.2
-pkgrel=20
+pkgrel=24
 pkgdesc="Indicator that displays China weather information (with a Plasma 6 weather widget)"
 arch=('x86_64')
 license=('GPL')
