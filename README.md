@@ -41,7 +41,8 @@ curl --compressed -H "X-QW-Api-Key: your-key" "https://devapi.qweather.com/v7/we
 sudo pacman -S --needed base-devel git geoip qt6-base qt6-tools gsettings-qt6 kwindowsystem cmake extra-cmake-modules
 ```
 
-+ 本分支 3.1.2 已移植到 Qt6 并迁移到 CMake 构建，托盘 applet 兼容 Plasma 6（X11/Wayland 会话）
++ 本分支 3.1.2 已移植到 Qt6 并迁移到 CMake 构建，并随包提供 Plasma 6 天气小部件（见下文「Plasma 小部件（Plasmoid）」章节）
++ 托盘应用的常驻托盘图标已下线，天气展示改由 Plasma 小部件承担；应用本体保留，可作为完整天气窗口启动
 + ukui-log4qt 为 UKUI 专属日志库，在 Arch 官方仓库与 AUR 均无包，属于可选依赖，本打包默认不启用（仅影响内部日志初始化，天气功能不受影响）
 
 ### 打包安装
@@ -84,6 +85,56 @@ export QWEATHER_CREDENTIAL_ID="你的凭据ID"
 + 也可使用 `~/.config/environment.d/qweather.conf`（systemd 用户会话）方式，写入 `QWEATHER_API_KEY=你的API_KEY` 与 `QWEATHER_CREDENTIAL_ID=你的凭据ID`
 + 从终端手动启动时，确保该终端已重新登录或 source 过上述文件
 + 未设置 `QWEATHER_API_KEY` 时，应用启动日志会输出中文告警并跳过全部天气请求，界面保持无数据状态（不会崩溃）
+
+
+## Plasma 小部件（Plasmoid）
+
+本仓库自带一个标准 Plasma 6 桌面小部件 `org.madoldman.chinaweather`（plasmoid/package/），随 archlinux 打包一并安装：
+
++ `/usr/share/plasma/plasmoids/org.madoldman.chinaweather/`：小部件本体（QML 界面、配置页、天气图标与城市表）
++ `/usr/lib/qt6/qml/org/madoldman/chinaweather/`：C++ QML 扩展模块（`WeatherClient` 后端，直连和风天气 API v7）
+
+### 添加到面板
+
+1. 右键点击面板空白处，选择「添加部件」（或「进入编辑模式」->「添加部件」）
+2. 搜索「天气」（或 `chinaweather`）
+3. 将「天气」小部件拖到面板任意位置
+
+小部件在面板上显示「天气图标 + 当前温度」，图标随当前天气实时变化（和风 100-999 天气代码，夜间自动切换夜间图标）。点击后面板会在小部件所在位置弹出完整天气面板（由 Plasma 原生锚定弹出，包含城市名、实况天气、7 天预报、空气质量 AQI 与 6 项生活指数），再次点击或点击面板外空白处收起。
+
+### 右键菜单
+
+小部件右键菜单在 Plasma 默认项之外新增两项：
+
++ 「打开应用」：启动本仓库的 Qt 应用（indicator-china-weather）并显示完整天气窗口；应用已在运行时则唤起其主窗口
++ 「设置」：打开小部件的配置对话框（等同 Plasma 默认的「配置 天气…」入口）
+
+### 配置项
+
+右键 -> 「设置」（或「配置 天气…」）可配置：
+
++ **城市（默认自动定位）**：默认不写死任何城市，按当前公网 IP 自动解析所在城市（主源 `geoip.ubuntu.com/lookup`，备源 `myip.ipip.net`，均无需凭据），解析结果仅缓存在本次会话内存中，不写入配置--换网/移动城市后重启小部件即自动更新；自动模式下城市名带「·自动」标识。也可输入城市名 / 拼音 / 拼音缩写搜索（如 `北京` / `changsha` / `bj`，基于本地 china-city-list.csv，不发网络请求）手动选择，选择后固定使用该配置；点击「恢复自动定位」清空配置回到自动模式
++ **刷新间隔**：自动刷新周期，单位分钟，默认 30（保存后立即按新间隔生效）
+
+IP 定位失败或定位到的城市不在本地城市表中时，面板会显示明确的中文错误提示（不会静默回落到任何写死城市），此时可在设置中手动选择城市。
+
+### 凭据要求
+
+小部件的数据后端与托盘应用共用同一凭据环境变量（缺失时小部件面板会显示错误提示且不发起请求），配置方式见上文「和风天气凭据配置」章节：Plasma 会话从 `~/.config/environment.d/qweather.conf` 或 `~/.profile` 继承 `QWEATHER_API_KEY`，修改后重新登录生效。
+
+### 托盘应用说明
+
+Qt 应用（indicator-china-weather）的常驻系统托盘图标已下线：托盘形态被 Plasma 小部件取代。应用本体保留，可从应用启动器或小部件右键菜单「打开应用」启动，用于查看完整天气窗口（多城市收藏等原主窗口功能）。
+
+### 开发调试
+
+```bash
+# 从源码目录临时加载（不安装）查看小部件
+QML2_IMPORT_PATH=plasmoid/build-qml plasmoidviewer -a plasmoid/package
+
+# 安装/更新到系统（需 root）
+sudo kpackagetool6 -t Plasma/Applet -u plasmoid/package
+```
 
 
 ### Internationalization

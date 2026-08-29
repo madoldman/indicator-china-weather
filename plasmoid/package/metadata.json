@@ -1,0 +1,24 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "刘传玉",
+                "Email": "madoldman@users.noreply.github.com"
+            }
+        ],
+        "Category": "Environment and Weather",
+        "Description": "基于和风天气数据的中国实时天气小部件（点击弹出详情面板）",
+        "Description[en_US]": "China weather widget powered by the QWeather API (click to open the details panel)",
+        "Icon": "indicator-china-weather",
+        "Id": "org.madoldman.chinaweather",
+        "License": "GPL-3.0-only",
+        "Name": "天气",
+        "Name[en_US]": "Weather",
+        "Version": "0.1",
+        "Website": "https://github.com/madoldman/indicator-china-weather"
+    },
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

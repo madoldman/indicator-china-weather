@@ -28,6 +28,10 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
+    // Wayland 会话下 Motif 等 X11 窗口属性无效，必须以 FramelessWindowHint 声明无边框，
+    // 否则 KWin 会给窗口加标题栏；X11 下 Qt 也会据此自动套用无边框，与点击时的 Motif 设置一致
+    setWindowFlags(windowFlags() | Qt::FramelessWindowHint);
+
     // 用户手册功能
     mDaemonIpcDbus = new DaemonDbus();
 
@@ -81,7 +85,8 @@ MainWindow::MainWindow(QWidget *parent) :
     //设置其他控件样式
     this->initControlQss();
 
-    //创建托盘图标
+    //托盘图标已下线（常驻托盘由 Plasma 小部件取代）；
+    //应用本体保留，可由 Plasmoid 右键菜单「打开应用」或桌面启动器唤起
     this->createTrayIcon();
     //添加托盘菜单
     m_mainMenu = new QMenu;
@@ -306,8 +311,8 @@ void MainWindow::initConnections()
     //没有网络的时候发送信号到收藏城市界面阻断动作进行
     connect(m_weatherManager,&WeatherManager::noNetWork,m_menu->addCityAction,&AddCityAction::noNetWork);
     //收到信号带来的数据时，更新主界面天气数据
+    //（托盘图标已下线，不再随天气数据显示到托盘）
     connect(m_weatherManager, &WeatherManager::requestSetObserveWeather, this, [=] (ObserveWeather observerdata) {
-        m_trayIcon->show();
         this->onSetObserveWeather(observerdata);
     });
 
@@ -378,7 +383,8 @@ void MainWindow::initConnections()
     });
 }
 
-//创建托盘图标
+//托盘图标已下线：不再在系统托盘常驻显示。
+//保留 QSystemTrayIcon 对象仅为兼容既有引用（菜单/图标设置等），始终不可见
 void MainWindow::createTrayIcon()
 {
     m_trayIcon = new QSystemTrayIcon(this);

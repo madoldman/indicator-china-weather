@@ -151,3 +151,6 @@ install(FILES indicator-china-weather.desktop
     DESTINATION /etc/xdg/autostart)
 install(FILES data/org.china-weather-data.gschema.xml
     DESTINATION share/glib-2.0/schemas)
+
+# Plasma 6 天气小部件（Plasmoid 包 + QML 后端模块 org.madoldman.chinaweather）
+add_subdirectory(plasmoid)

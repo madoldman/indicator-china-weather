@@ -9,23 +9,31 @@
 # 参照 Arch Linux 官方打包仓库适配：
 # https://gitlab.archlinux.org/archlinux/packaging/packages/indicator-china-weather/
 #
-# 相比官方打包的 3.0.4：本分支 3.1.2 已由 Qt5/qmake 移植到 Qt6/CMake 构建
-# （托盘 applet 兼容 Plasma 6 的 X11/Wayland 会话），新增 gsettings-qt6、
-# kwindowsystem（KF6）、geoip 三个依赖（均在 extra 仓库，对应 debian/control
-# 中的 libgsettings-qt-dev、libkf6windowsystem-dev、libgeoip-dev）；
-# UKUI 专属日志库 ukui-log4qt（对应 libukui-log4qt-dev）在 Arch 官方仓库与
-# AUR 均无包，构建时不启用（CMake 选项 ENABLE_UKUI_LOG4QT，默认 OFF），
-# 日志回退 Qt 默认输出。
+# 相比官方打包的 3.0.4：本分支 3.1.2 已由 Qt5/qmake 移植到 Qt6/CMake 构建，
+# 新增 gsettings-qt6、kwindowsystem（KF6）、geoip 三个依赖（均在 extra 仓库，
+# 对应 debian/control 中的 libgsettings-qt-dev、libkf6windowsystem-dev、
+# libgeoip-dev）；UKUI 专属日志库 ukui-log4qt（对应 libukui-log4qt-dev）在
+# Arch 官方仓库与 AUR 均无包，构建时不启用（CMake 选项 ENABLE_UKUI_LOG4QT，
+# 默认 OFF），日志回退 Qt 默认输出。
+#
+# 3.1.2-3：新增 Plasma 6 天气小部件（Plasmoid org.madoldman.chinaweather）：
+# - package/ 安装到 /usr/share/plasma/plasmoids/org.madoldman.chinaweather/
+# - Qt6 QML 扩展模块 org.madoldman.chinaweather 安装到 /usr/lib/qt6/qml/
+#   （依赖 qt6-declarative 提供 Qt6::Qml 构建与运行库）
+# - 托盘应用的常驻托盘图标下线（由 Plasmoid 取代），应用本体保留
+# 3.1.2-4：小部件默认城市改为按公网 IP 自动定位（geoip.ubuntu.com 主源、
+# myip.ipip.net 备源，均无需凭据），手动选择后固定使用配置值，可随时恢复自动
 
 pkgname=indicator-china-weather
 pkgver=3.1.2
-pkgrel=2
-pkgdesc="Indicator that displays China weather information"
+pkgrel=5
+pkgdesc="Indicator that displays China weather information (with a Plasma 6 weather widget)"
 arch=('x86_64')
 license=('GPL')
 url="https://github.com/madoldman/indicator-china-weather"
-depends=('geoip' 'qt6-base' 'gsettings-qt6' 'kwindowsystem')
+depends=('geoip' 'qt6-base' 'qt6-declarative' 'gsettings-qt6' 'kwindowsystem')
 makedepends=('git' 'cmake' 'extra-cmake-modules' 'qt6-tools')
+optdepends=('plasma-workspace: Plasma 桌面小部件（Plasmoid）运行环境')
 source=("$pkgname::git+file://$startdir/..#branch=archlinux")
 sha512sums=('SKIP')
 

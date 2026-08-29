@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+
+  <group name="Weather">
+    <entry name="cityId" type="String">
+      <label>城市 ID（和风天气 LocationID；留空 = 按公网 IP 自动定位）</label>
+    </entry>
+    <entry name="cityName" type="String">
+      <label>城市名称（留空 = 自动定位）</label>
+    </entry>
+    <entry name="refreshInterval" type="Int">
+      <label>自动刷新间隔（分钟）</label>
+      <default>30</default>
+    </entry>
+  </group>
+
+</kcfg>
