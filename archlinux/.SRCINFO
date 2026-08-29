@@ -1,0 +1,17 @@
+pkgbase = indicator-china-weather
+	pkgdesc = Indicator that displays China weather information
+	pkgver = 3.1.2
+	pkgrel = 1
+	url = https://github.com/madoldman/indicator-china-weather
+	arch = x86_64
+	license = GPL
+	makedepends = git
+	makedepends = qt5-tools
+	depends = geoip
+	depends = qt5-base
+	depends = gsettings-qt5
+	depends = kwindowsystem5
+	source = indicator-china-weather::git+file:///home/madoldman/Projects/indicator-china-weather/archlinux/..#branch=archlinux
+	sha512sums = SKIP
+
+pkgname = indicator-china-weather

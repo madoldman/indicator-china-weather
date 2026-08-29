@@ -41,6 +41,38 @@ The weather data are from the heweather API s6 version.
 + https://free-api.heweather.net/s6/air/now?location=CN101250101&key=xxxx
 
 
+## Arch Linux 安装（本仓库打包）
+
+本仓库提供 Arch Linux 打包文件（位于 `archlinux/` 目录），直接打包 `archlinux` 分支（本仓库）的本地代码：PKGBUILD 的 source 通过本地 git file:// 协议指向仓库根目录（PKGBUILD 所在 `archlinux/` 目录的上一级）并检出 `archlinux` 分支，构建全程不访问网络。
+
+### 安装依赖
+
+```bash
+sudo pacman -S --needed base-devel git geoip qt5-base qt5-tools gsettings-qt5 kwindowsystem5
+```
+
++ 本分支 3.1.2 依赖 UKUI 专属日志库 ukui-log4qt，该库在 Arch 官方仓库与 AUR 均无包，PKGBUILD 会在 prepare() 阶段自动补丁移除，仅影响内部日志初始化，天气功能不受影响
+
+### 打包安装
+
+```bash
+git clone -b archlinux https://github.com/madoldman/indicator-china-weather.git
+cd indicator-china-weather/archlinux
+makepkg -si
+```
+
+检出 `archlinux` 分支后执行 `makepkg -si`，直接打包本仓库本地代码，全程不访问网络。
+
+### 代码更新后重新打包
+
++ 代码改动提交/合入 `archlinux` 分支后，在 `archlinux/` 目录重跑 `makepkg -si` 即可，无需修改校验和
+
+### 维护提示
+
++ 修改 PKGBUILD 后，在 `archlinux/` 目录执行 `makepkg --printsrcinfo > .SRCINFO` 重新生成元数据
++ 如已安装 namcap，可执行 `namcap archlinux/PKGBUILD` 做打包检查
+
+
 ### Internationalization
 
 1. lupdate indicator-china-weather.pro

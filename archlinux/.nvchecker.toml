@@ -1,0 +1,5 @@
+# 仅用于监视上游 UbuntuKylin 新版本，不参与本地构建
+[indicator-china-weather]
+source = "git"
+git = "https://github.com/UbuntuKylin/indicator-china-weather.git"
+prefix = "v"

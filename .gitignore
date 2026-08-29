@@ -47,3 +47,12 @@ CMakeLists.txt.user*
 # translations
 *.qm
 *DS_Store
+
+# Arch Linux packaging (makepkg working dirs and artifacts under archlinux/, never commit)
+archlinux/src/
+archlinux/pkg/
+archlinux/indicator-china-weather/
+archlinux/*.pkg.tar.*
+archlinux/*.tar.*
+archlinux/*.sig
+archlinux/*.log
