@@ -23,6 +23,8 @@
 #include "data.h"
 
 #include <QWidget>
+
+class QLabel; // 前置声明，供 setForecastIcon 参数使用
 #include <QFileInfo>
 
 class WeatherWorker;
@@ -45,6 +47,7 @@ public slots:
 
     //set lifestyle index in mainwindow
     void onSetLifeStyle(LifeStyle lifestyle);
+    void setForecastIcon(QLabel *label, const QString &picStr); // 缩放设置 7 天预报图标
 
 private:
     int m_day = 1;

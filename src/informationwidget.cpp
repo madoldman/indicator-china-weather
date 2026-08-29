@@ -20,6 +20,7 @@
 #include "informationwidget.h"
 #include "ui_informationwidget.h"
 #include "weatherworker.h"
+#include <QPixmap>
 
 Information::Information(QWidget *parent) :
     QWidget(parent),
@@ -294,7 +295,11 @@ void Information::onSetForecastWeather(ForecastWeather forecastweather)
 //    ui->lbIcon_1->resize(ui->lbIcon_1->size());
 
     QString picStr = convertCodeToBackgroud(code);
-    QString pic = "QLabel{background-image:url(" + picStr + ");}";
+    // 白色圆底：官网彩色图标以蓝色为主体，直接叠在蓝色 UI 背景上看不清，
+    // 加半透明白色圆底保证任何背景下都清晰（radius=24 对应 48x48 的 lbIcon）
+    QString pic = "QLabel{background-image:url(" + picStr + ");"
+                  "background-position:center;background-repeat:no-repeat;"
+                  "background-color:rgba(255,255,255,0.85);border-radius:24px;}";
 
     //获取气温
     QString tmp = forecastweather.tmp_min + "℃~" + forecastweather.tmp_max + "℃";
@@ -305,49 +310,49 @@ void Information::onSetForecastWeather(ForecastWeather forecastweather)
     case 1:
         ui->lbDay_1->setText(current_week_1);
         ui->lbDate_1->setText(date_1);
-        ui->lbIcon_1->setStyleSheet(pic);
+        setForecastIcon(ui->lbIcon_1, picStr);
         ui->lbTmp_1->setText(tmp);
         ui->lbWea_1->setText(wea);
         break;
     case 2:
         ui->lbDay_2->setText(current_week_2);
         ui->lbDate_2->setText(date_2);
-        ui->lbIcon_2->setStyleSheet(pic);
+        setForecastIcon(ui->lbIcon_2, picStr);
         ui->lbTmp_2->setText(tmp);
         ui->lbWea_2->setText(wea);
         break;
     case 3:
         ui->lbDay_3->setText(current_week_3);
         ui->lbDate_3->setText(date_3);
-        ui->lbIcon_3->setStyleSheet(pic);
+        setForecastIcon(ui->lbIcon_3, picStr);
         ui->lbTmp_3->setText(tmp);
         ui->lbWea_3->setText(wea);
         break;
     case 4:
         ui->lbDay_4->setText(current_week_4);
         ui->lbDate_4->setText(date_4);
-        ui->lbIcon_4->setStyleSheet(pic);
+        setForecastIcon(ui->lbIcon_4, picStr);
         ui->lbTmp_4->setText(tmp);
         ui->lbWea_4->setText(wea);
         break;
     case 5:
         ui->lbDay_5->setText(current_week_5);
         ui->lbDate_5->setText(date_5);
-        ui->lbIcon_5->setStyleSheet(pic);
+        setForecastIcon(ui->lbIcon_5, picStr);
         ui->lbTmp_5->setText(tmp);
         ui->lbWea_5->setText(wea);
         break;
     case 6:
         ui->lbDay_6->setText(current_week_6);
         ui->lbDate_6->setText(date_6);
-        ui->lbIcon_6->setStyleSheet(pic);
+        setForecastIcon(ui->lbIcon_6, picStr);
         ui->lbTmp_6->setText(tmp);
         ui->lbWea_6->setText(wea);
         break;
     case 7:
         ui->lbDay_7->setText(current_week_7);
         ui->lbDate_7->setText(date_7);
-        ui->lbIcon_7->setStyleSheet(pic);
+        setForecastIcon(ui->lbIcon_7, picStr);
         ui->lbTmp_7->setText(tmp);
         ui->lbWea_7->setText(wea);
         break;
@@ -360,43 +365,43 @@ void Information::onSetForecastWeather(ForecastWeather forecastweather)
     {
             ui->lbDay_1->setText(current_week_1);
             ui->lbDate_1->setText(date_1);
-            ui->lbIcon_1->setStyleSheet(pic);
+            setForecastIcon(ui->lbIcon_1, picStr);
             ui->lbTmp_1->setText(tmp);
             ui->lbWea_1->setText(wea);
 
             ui->lbDay_2->setText(current_week_2);
             ui->lbDate_2->setText(date_2);
-            ui->lbIcon_2->setStyleSheet(pic);
+            setForecastIcon(ui->lbIcon_2, picStr);
             ui->lbTmp_2->setText(tmp);
             ui->lbWea_2->setText(wea);
 
             ui->lbDay_3->setText(current_week_3);
             ui->lbDate_3->setText(date_3);
-            ui->lbIcon_3->setStyleSheet(pic);
+            setForecastIcon(ui->lbIcon_3, picStr);
             ui->lbTmp_3->setText(tmp);
             ui->lbWea_3->setText(wea);
 
             ui->lbDay_4->setText(current_week_4);
             ui->lbDate_4->setText(date_4);
-            ui->lbIcon_4->setStyleSheet(pic);
+            setForecastIcon(ui->lbIcon_4, picStr);
             ui->lbTmp_4->setText(tmp);
             ui->lbWea_4->setText(wea);
 
             ui->lbDay_5->setText(current_week_5);
             ui->lbDate_5->setText(date_5);
-            ui->lbIcon_5->setStyleSheet(pic);
+            setForecastIcon(ui->lbIcon_5, picStr);
             ui->lbTmp_5->setText(tmp);
             ui->lbWea_5->setText(wea);
 
             ui->lbDay_6->setText(current_week_6);
             ui->lbDate_6->setText(date_6);
-            ui->lbIcon_6->setStyleSheet(pic);
+            setForecastIcon(ui->lbIcon_6, picStr);
             ui->lbTmp_6->setText(tmp);
             ui->lbWea_6->setText(wea);
 
             ui->lbDay_7->setText(current_week_7);
             ui->lbDate_7->setText(date_7);
-            ui->lbIcon_7->setStyleSheet(pic);
+            setForecastIcon(ui->lbIcon_7, picStr);
             ui->lbTmp_7->setText(tmp);
             ui->lbWea_7->setText(wea);
 
@@ -416,6 +421,19 @@ void Information::onSetLifeStyle(LifeStyle lifestyle)
     ui->lb_air_brf->setText(lifestyle.air_brf); //空气指数
 
     ui->lb_sport_brf->setText(lifestyle.sport_brf); //运动指数
+}
+
+// 7 天预报图标：QLabel 的 background-image 不缩放（100x100 图标只显示中间一小块），
+// 改 QPixmap 缩放后 setPixmap，透明背景直接显示彩色图标（不加深色/白色底）
+void Information::setForecastIcon(QLabel *label, const QString &picStr)
+{
+    QPixmap pm(picStr);
+    if (!pm.isNull()) {
+        pm = pm.scaled(40, 40, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
+    label->setPixmap(pm);
+    label->setAlignment(Qt::AlignCenter);
+    label->setStyleSheet(QString());
 }
 
 QString Information::convertCodeToBackgroud(int code)
