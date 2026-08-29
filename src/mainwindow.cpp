@@ -28,10 +28,6 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    // Wayland 会话下 Motif 等 X11 窗口属性无效，必须以 FramelessWindowHint 声明无边框，
-    // 否则 KWin 会给窗口加标题栏；X11 下 Qt 也会据此自动套用无边框，与点击时的 Motif 设置一致
-    setWindowFlags(windowFlags() | Qt::FramelessWindowHint);
-
     // 用户手册功能
     mDaemonIpcDbus = new DaemonDbus();
 
