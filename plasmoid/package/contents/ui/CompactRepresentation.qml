@@ -22,10 +22,9 @@ Item {
     id: compact
 
     readonly property bool isNight: IconUtil.isNightHour(new Date().getHours())
-    readonly property bool isDarkTheme: IconUtil.isDarkTheme(Kirigami.Theme.textColor)
 
     function iconSource(code) {
-        return Qt.resolvedUrl(IconUtil.iconPath(code, isNight, isDarkTheme))
+        return Qt.resolvedUrl(IconUtil.iconPath(code, isNight))
     }
 
     implicitWidth: Math.max(row.implicitWidth + Kirigami.Units.smallSpacing * 2,

@@ -51,11 +51,38 @@ function iconBase(code, isNight) {
     return base;
 }
 
-// 返回图标相对本目录的路径（调用方用 Qt.resolvedUrl 解析）；
-// 深色主题选 white 图标集，浅色主题选 darkgrey 图标集
-function iconPath(code, isNight, isDarkTheme) {
-    var dir = isDarkTheme ? "white" : "darkgrey";
-    return "icons/" + dir + "/" + iconBase(code, isNight) + ".png";
+// 官方彩色图标集（static.qweather.com 202106d）只有 44 个代码：
+// 100-104 晴云系、150-154 夜间系、300-318 部分雨、400-410 部分雪、500-515 部分雾霾、900/999。
+// 旧体系缺失的代码在此映射到官方最接近的彩色码，保证全代码彩色渲染。
+var OFFICIAL_FALLBACK = {
+    "200": "999", "201": "999", "202": "999", "203": "999", "204": "999",
+    "205": "999", "206": "999", "207": "999", "208": "999", "209": "999",
+    "210": "999", "211": "999", "212": "999", "213": "999",
+    "301": "300", "306": "305", "312": "311", "399": "305",
+    "402": "401", "403": "499", "407": "406", "410": "408",
+    "504": "503", "507": "503", "510": "500", "511": "512", "514": "501",
+    "901": "900", "155": "154"
+};
+// 旧夜间码（100n/103n/104n 等）→ 官方夜间码 150-154
+var NIGHT_TO_OFFICIAL = { "100": "150", "101": "150", "102": "152", "103": "153", "104": "154" };
+
+// 把任意天气代码解析为官方彩色图标文件名（不含扩展名）
+function officialCode(code, isNight) {
+    var c = String(code || "999");
+    var num = parseInt(c, 10);
+    if (num >= 150 && num <= 155) {
+        return String(Math.min(num, 154)); // v7 夜间码直接用官方夜间码
+    }
+    if (isNight && NIGHT_TO_OFFICIAL[c]) {
+        return NIGHT_TO_OFFICIAL[c];
+    }
+    var fb = OFFICIAL_FALLBACK[c];
+    return fb ? fb : c;
+}
+
+// 返回彩色图标相对本目录的路径（调用方用 Qt.resolvedUrl 解析）
+function iconPath(code, isNight) {
+    return "icons/color/" + officialCode(code, isNight) + ".png";
 }
 
 // 依主题文字色亮度判断深浅色主题（YIQ 亮度公式；textColor 为 Kirigami.Theme.textColor）

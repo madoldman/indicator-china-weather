@@ -20,14 +20,38 @@ PlasmaExtras.Representation {
     id: full
 
     readonly property bool isNight: IconUtil.isNightHour(new Date().getHours())
-    readonly property bool isDarkTheme: IconUtil.isDarkTheme(Kirigami.Theme.textColor)
 
     // 弹出窗口的建议尺寸（内容较长时由内部 ScrollView 滚动）
-    Layout.preferredWidth: Kirigami.Units.gridUnit * 25
-    Layout.preferredHeight: Kirigami.Units.gridUnit * 30
+    Layout.preferredWidth: Kirigami.Units.gridUnit * 27
+    Layout.preferredHeight: Kirigami.Units.gridUnit * 33
 
     function iconSource(code) {
-        return Qt.resolvedUrl(IconUtil.iconPath(code, isNight, isDarkTheme))
+        return Qt.resolvedUrl(IconUtil.iconPath(code, isNight))
+    }
+
+    // 生活指数彩色圆形背景：半透明柔和色（55% 不透明度），与面板背景融合，
+    // 避免纯色块在深色面板上过亮刺眼
+    function indexBgColor(type, name) {
+        if (type === 1 || /运动/.test(name || "")) return "#8CB2DFDB"  // 青
+        if (type === 2 || /洗车/.test(name || "")) return "#8CBBDEFB"  // 蓝
+        if (type === 3 || /穿衣/.test(name || "")) return "#8CF8BBD0"  // 粉
+        if (type === 5 || /紫外线/.test(name || "")) return "#8CFFF59D" // 黄
+        if (type === 9 || /感冒/.test(name || "")) return "#8CFFCCBC"  // 橙
+        if (type === 10 || /空气/.test(name || "")) return "#8CC8E6C9" // 绿
+        return "#40E0E0E0"
+    }
+
+    // 生活指数彩色图标：自官网精灵图（city-icon.png）裁剪的官方彩色图标
+    // （穿衣/感冒/紫外线/洗车/空气/运动），type 映射与和风 indices 一致
+    function indexIconSource(type, name) {
+        var key = ""
+        if (type === 1 || /运动/.test(name || "")) key = "index_sport"
+        else if (type === 2 || /洗车/.test(name || "")) key = "index_cw"
+        else if (type === 3 || /穿衣/.test(name || "")) key = "index_drsg"
+        else if (type === 5 || /紫外线/.test(name || "")) key = "index_uv"
+        else if (type === 9 || /感冒/.test(name || "")) key = "index_flu"
+        else if (type === 10 || /空气/.test(name || "")) key = "index_air"
+        return key.length > 0 ? Qt.resolvedUrl("icons/index/" + key + ".png") : ""
     }
 
     // 今天/明天直接标注，其余按日期算出星期
@@ -195,28 +219,45 @@ PlasmaExtras.Representation {
             ListView {
                 id: dailyView
                 clip: true
+                spacing: Kirigami.Units.smallSpacing
                 model: root.weatherClient.daily ?? []
 
                 delegate: Item {
                     width: ListView.view.width
-                    implicitHeight: Kirigami.Units.gridUnit * 1.7
+                    implicitHeight: Kirigami.Units.gridUnit * 2.6
 
-                    RowLayout {
+                    // 今日高亮、其余行浅色底，行与行之间由间距自然分隔
+                    Rectangle {
                         anchors.fill: parent
                         anchors.leftMargin: Kirigami.Units.smallSpacing
                         anchors.rightMargin: Kirigami.Units.smallSpacing
-                        spacing: Kirigami.Units.smallSpacing
+                        radius: Kirigami.Units.smallSpacing
+                        color: index === 0
+                               ? Kirigami.Theme.highlightColor
+                               : Qt.rgba(Kirigami.Theme.textColor.r,
+                                         Kirigami.Theme.textColor.g,
+                                         Kirigami.Theme.textColor.b, 0.07)
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.largeSpacing
+                        anchors.rightMargin: Kirigami.Units.largeSpacing
+                        spacing: Kirigami.Units.largeSpacing
 
                         ColumnLayout {
-                            spacing: 0
+                            spacing: Kirigami.Units.smallSpacing / 2
                             PlasmaComponents3.Label {
                                 text: full.weekLabel(modelData.date ?? "", index)
-                                color: Kirigami.Theme.textColor
+                                color: index === 0 ? Kirigami.Theme.highlightedTextColor
+                                                  : Kirigami.Theme.textColor
                                 font.pixelSize: Kirigami.Units.gridUnit * 0.8
+                                font.bold: index === 0
                             }
                             PlasmaComponents3.Label {
                                 text: modelData.date ?? ""
-                                color: Kirigami.Theme.disabledTextColor
+                                color: index === 0 ? Kirigami.Theme.highlightedTextColor
+                                                  : Kirigami.Theme.disabledTextColor
                                 font.pixelSize: Kirigami.Units.gridUnit * 0.65
                             }
                         }
@@ -231,7 +272,8 @@ PlasmaExtras.Representation {
 
                         PlasmaComponents3.Label {
                             text: modelData.textDay ?? ""
-                            color: Kirigami.Theme.textColor
+                            color: index === 0 ? Kirigami.Theme.highlightedTextColor
+                                              : Kirigami.Theme.textColor
                             font.pixelSize: Kirigami.Units.gridUnit * 0.8
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -240,8 +282,11 @@ PlasmaExtras.Representation {
                         PlasmaComponents3.Label {
                             text: (modelData.tempMin ?? "") + " ~ "
                                   + (modelData.tempMax ?? "") + "°C"
-                            color: Kirigami.Theme.textColor
+                            color: index === 0 ? Kirigami.Theme.highlightedTextColor
+                                              : Kirigami.Theme.textColor
                             font.pixelSize: Kirigami.Units.gridUnit * 0.8
+                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                            horizontalAlignment: Text.AlignRight
                         }
                     }
                 }
@@ -261,36 +306,51 @@ PlasmaExtras.Representation {
             Layout.rightMargin: Kirigami.Units.largeSpacing
         }
 
-        // 4) 生活指数（6 项：穿衣/洗车/感冒/紫外线/空气污染扩散/运动）
+        // 4) 生活指数（6 项：穿衣/洗车/感冒/紫外线/空气污染扩散/运动）：
+        //    2 列 3 行，每项「图标 + 名称：等级」，不显示长描述，保持简洁
         GridLayout {
             Layout.leftMargin: Kirigami.Units.largeSpacing
             Layout.rightMargin: Kirigami.Units.largeSpacing
-            Layout.bottomMargin: Kirigami.Units.smallSpacing
+            Layout.bottomMargin: Kirigami.Units.largeSpacing
             columns: 2
-            columnSpacing: Kirigami.Units.largeSpacing
-            rowSpacing: Kirigami.Units.smallSpacing
+            columnSpacing: Kirigami.Units.largeSpacing * 2
+            rowSpacing: Kirigami.Units.smallSpacing * 2
 
             Repeater {
                 model: root.weatherClient.indices ?? []
 
-                delegate: ColumnLayout {
-                    spacing: 0
+                delegate: RowLayout {
                     Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Rectangle {
+                        Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                             + Kirigami.Units.smallSpacing
+                        Layout.preferredHeight: Layout.preferredWidth
+                        radius: width / 2
+                        color: full.indexBgColor(modelData.type, modelData.name)
+
+                        Image {
+                            anchors.centerIn: parent
+                            width: parent.width * 0.68
+                            height: width
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            source: full.indexIconSource(modelData.type, modelData.name)
+                        }
+                    }
 
                     PlasmaComponents3.Label {
-                        text: (modelData.name ?? "") + "：" + (modelData.category ?? "")
+                        text: (modelData.name ?? "") + "："
+                        color: Kirigami.Theme.disabledTextColor
+                        font.pixelSize: Kirigami.Units.gridUnit * 0.75
+                    }
+                    PlasmaComponents3.Label {
+                        text: modelData.category ?? ""
                         color: Kirigami.Theme.textColor
                         font.pixelSize: Kirigami.Units.gridUnit * 0.75
                         font.bold: true
-                    }
-                    PlasmaComponents3.Label {
-                        text: modelData.text ?? ""
-                        color: Kirigami.Theme.disabledTextColor
-                        font.pixelSize: Kirigami.Units.gridUnit * 0.7
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 2
                         elide: Text.ElideRight
-                        Layout.fillWidth: true
                     }
                 }
             }
