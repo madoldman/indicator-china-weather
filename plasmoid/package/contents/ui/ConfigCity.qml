@@ -29,8 +29,7 @@ ColumnLayout {
     // 搜索结果（QVariantList，元素为 {id, name, province}）
     property var searchResults: []
 
-    // 仅用于本地城市表搜索的客户端实例（不发网络请求；配置对话框是
-    // 独立引擎，无法经 root 访问主界面的客户端）
+    // 仅用于本地城市表搜索的客户端实例（不发网络请求）
     WeatherClient {
         id: citySearchClient
     }

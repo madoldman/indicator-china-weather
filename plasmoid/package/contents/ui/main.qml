@@ -18,33 +18,33 @@ import org.madoldman.chinaweather
 PlasmoidItem {
     id: root
 
-    // 天气数据客户端：kcfg 配置直接绑定。各视图通过 root.weatherClient 访问
-    // （与官方 systemmonitor 一致；注意不要写 `weatherClient: weatherClient`，
-    //  会被视图自身同名属性遮蔽而解析为 null）
-    property WeatherClient weatherClient: WeatherClient {
+    // 天气数据客户端：属性绑定到 kcfg（contents/config/main.xml）
+    WeatherClient {
+        id: weatherClient
+
         cityId: Plasmoid.configuration.cityId
         cityName: Plasmoid.configuration.cityName
         refreshInterval: Plasmoid.configuration.refreshInterval
     }
 
     Plasmoid.title: {
-        const name = root.weatherClient.activeCityName
+        const name = weatherClient.activeCityName
         if (name.length === 0) {
             return i18n("天气")
         }
-        return root.weatherClient.autoMode ? i18n("%1（自动定位）", name) : name
+        return weatherClient.autoMode ? i18n("%1（自动定位）", name) : name
     }
 
     // 面板图标的悬停提示
     toolTipMainText: {
-        const name = root.weatherClient.activeCityName
+        const name = weatherClient.activeCityName
         if (name.length === 0) {
-            return root.weatherClient.locating ? i18n("正在定位…") : i18n("天气")
+            return weatherClient.locating ? i18n("正在定位…") : i18n("天气")
         }
-        return root.weatherClient.autoMode ? i18n("%1（自动定位）", name) : name
+        return weatherClient.autoMode ? i18n("%1（自动定位）", name) : name
     }
-    toolTipSubText: root.weatherClient.nowText && root.weatherClient.nowTemp.length > 0
-        ? i18n("%1 %2°C", root.weatherClient.nowText, root.weatherClient.nowTemp)
+    toolTipSubText: weatherClient.nowText && weatherClient.nowTemp.length > 0
+        ? i18n("%1 %2°C", weatherClient.nowText, weatherClient.nowTemp)
         : i18n("点击查看天气详情")
 
     // 自定义右键菜单：
@@ -55,7 +55,7 @@ PlasmoidItem {
         PlasmaCore.Action {
             text: i18n("打开应用")
             icon.name: "indicator-china-weather"
-            onTriggered: root.weatherClient.launchApp()
+            onTriggered: weatherClient.launchApp()
         },
         PlasmaCore.Action {
             text: i18n("设置")
@@ -70,18 +70,23 @@ PlasmoidItem {
     ]
 
     // 面板上的紧凑形态：天气图标 + 当前温度
-    compactRepresentation: CompactRepresentation {}
+    compactRepresentation: CompactRepresentation {
+        weatherClient: weatherClient
+        appletItem: root
+    }
 
     // 点击紧凑形态后由 Plasma 弹出的完整面板
-    fullRepresentation: FullRepresentation {}
+    fullRepresentation: FullRepresentation {
+        weatherClient: weatherClient
+    }
 
     // 小部件启动时拉取一次数据
-    Component.onCompleted: root.weatherClient.refresh()
+    Component.onCompleted: weatherClient.refresh()
 
     // 面板展开（弹出面板可见）时刷新
     onExpandedChanged: {
         if (expanded) {
-            root.weatherClient.refresh()
+            weatherClient.refresh()
         }
     }
 }

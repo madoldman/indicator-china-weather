@@ -26,8 +26,6 @@
 
 #include <QtQml/qqmlregistration.h>
 
-class QQmlEngine;
-class QJSEngine;
 class QNetworkAccessManager;
 class QTimer;
 
@@ -37,10 +35,6 @@ class QTimer;
  * 直连和风天气 API v7 的四个请求（now / 7d / air / indices），与托盘应用
  * src/weatherworker.cpp 的端点、认证与字段映射保持一致，但为独立精简实现，
  * 不与托盘应用的 worker/信号体系耦合。
- *
- * QML 端在 main.qml（PlasmoidItem，id: root）实例化，各视图经
- * root.weatherClient 访问——与官方 systemmonitor 小部件的写法一致
- * （representation 组件通过声明上下文解析 main.qml 的 id）。
  */
 class WeatherClient : public QObject
 {
