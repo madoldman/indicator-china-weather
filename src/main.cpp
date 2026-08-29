@@ -19,12 +19,15 @@
 
 #include "mainwindow.h"
 #include "dbusadaptor.h"
+#include "data.h"
 #include <QApplication>
 #include <QTranslator>
 #include <QLibraryInfo>
 #include <QObject>
 #include <QDir>
+#ifdef ENABLE_UKUI_LOG4QT
 #include <ukui-log4qt.h>
+#endif
 #include <signal.h>
 #include <X11/Xlib.h>
 #include "xatom-helper.h"
@@ -43,8 +46,10 @@ bool onlyOne(QtSingleApplication &a)
 
 void setAttribute(QtSingleApplication &a)
 {
+#ifdef ENABLE_UKUI_LOG4QT
     //init log module
     initUkuiLog4qt("indicator-china-weather");
+#endif
 
     signal(SIGINT, [](int) { QApplication::quit(); });// 设置退出信号
 
@@ -97,12 +102,13 @@ void responseCommand(QtSingleApplication &a)
 
 int main(int argc, char *argv[])
 {
-    #if(QT_VERSION >= QT_VERSION_CHECK(5, 6, 0))
+    // Qt6 默认启用高 DPI 缩放与高分辨率 pixmap，无需再显式设置
+    #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0) && (QT_VERSION >= QT_VERSION_CHECK(5, 6, 0))
             QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
             QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
     #endif
 
-    #if(QT_VERSION >= QT_VERSION_CHECK(5, 14, 0))
+    #if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
             QApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     #endif
 
@@ -113,6 +119,11 @@ int main(int argc, char *argv[])
 //    responseCommand(a);//响应外部DBus命令
     if(onlyOne(a))return 0;
     setAttribute(a);//设置属性
+
+    //和风天气凭据检查：缺失时仅告警并跳过后续天气请求（配置方式见 README「和风天气凭据配置」）
+    if (QWeather::apiKey().isEmpty()) {
+        qWarning() << "未设置 QWEATHER_API_KEY 环境变量，无法请求和风天气数据";
+    }
 
 
     //翻译（YYF 经自测封装到函数里会导致程序部分翻译文件失效）
@@ -127,7 +138,7 @@ int main(int argc, char *argv[])
         trans_path = qApp->applicationDirPath() + "/translations";
     }
     QString qt_trans_path;
-    qt_trans_path = QLibraryInfo::location(QLibraryInfo::TranslationsPath);// /usr/share/qt5/translations
+    qt_trans_path = QLibraryInfo::path(QLibraryInfo::TranslationsPath);// /usr/share/qt6/translations
 
     if (locale == "zh_CN") {
         if(!app_trans.load("indicator-china-weather_" + locale + ".qm", trans_path))

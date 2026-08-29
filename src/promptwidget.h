@@ -37,7 +37,11 @@ public:
     void setIconAndText(const QString &iconPath, const QString &text);
 
 protected:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    void enterEvent(QEnterEvent *event) Q_DECL_OVERRIDE;//Qt6 起 enterEvent 参数改为 QEnterEvent
+#else
     void enterEvent(QEvent *event) Q_DECL_OVERRIDE;
+#endif
     void leaveEvent(QEvent *event) Q_DECL_OVERRIDE;
     bool event(QEvent *event) Q_DECL_OVERRIDE;
     void showEvent(QShowEvent *event) Q_DECL_OVERRIDE;

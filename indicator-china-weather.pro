@@ -39,6 +39,9 @@ INSTALLS += target icons qm_files appdesktop startdesktop schemes
 # deprecated API in order to know how to port your code away from it.
 DEFINES += QT_DEPRECATED_WARNINGS
 
+# 源码中 ukui-log4qt 相关调用以 ENABLE_UKUI_LOG4QT 包裹，qmake 构建保持原有行为
+DEFINES += ENABLE_UKUI_LOG4QT
+
 LIBS += -lpthread
 LIBS += -lX11
 LIBS += -lukui-log4qt

@@ -29,6 +29,7 @@
 #include <QApplication>
 #include <QStringList>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QVariant>
 
 citycollectionitem::citycollectionitem(QWidget *parent) :
@@ -186,10 +187,22 @@ void citycollectionitem::onThreadStart()
 void citycollectionitem::onWeatherDataRequest(const QString &cityId)
 {
     if (cityId.isEmpty()) { return; }
+    if (QWeather::apiKey().isEmpty()) {
+        qWarning() << "未设置 QWEATHER_API_KEY 环境变量，无法请求和风天气数据";
+        return;
+    }
 
-    QString forecastUrl = QString("http://weather.ubuntukylin.com:8001/weather/api/3.0/heweather_data_s6/%1/").arg(cityId);
+    //直连和风天气 API v7；中文/特殊字符经 QUrlQuery 自动百分号编码
+    QUrl url(QString(QWeather::DEVAPI_HOST) + QStringLiteral("/v7/weather/now"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("location"), cityId);
+    query.addQueryItem(QStringLiteral("lang"), QStringLiteral("zh"));
+    url.setQuery(query);
+
     QNetworkRequest request;
-    request.setUrl(forecastUrl);
+    request.setUrl(url);
+    //API Key 认证头（勿手动设置 Accept-Encoding，Qt 需自行管理该头才会透明解压 gzip 响应）
+    request.setRawHeader("X-QW-Api-Key", QWeather::apiKey().toUtf8());
     QNetworkReply *reply = m_networkManager->get(request);
     connect(reply, &QNetworkReply::finished, this, &citycollectionitem::onWeatherDataReply );
 }
@@ -201,14 +214,15 @@ void citycollectionitem::onWeatherDataReply()
     int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qDebug()<<"Reply value of getting weather data by URL is: "<<statusCode;
 
-    if(reply->error() != QNetworkReply::NoError) {
+    if(reply->error() != QNetworkReply::NoError && statusCode != 200) {
         qDebug() << "reply error!";
+        reply->close();
+        reply->deleteLater();
+        emit this->mThreadFinish();
         return;
     }
 
     QByteArray ba = reply->readAll();
-    //QString reply_content = QString::fromUtf8(ba);
-    //qDebug() <<reply_content;
     reply->close();
     reply->deleteLater();
 
@@ -216,54 +230,36 @@ void citycollectionitem::onWeatherDataReply()
     QJsonDocument jsonDocument = QJsonDocument::fromJson(ba, &err);
     if (err.error != QJsonParseError::NoError) {// Json type error
         qDebug() << "Json type error";
+        emit this->mThreadFinish();
         return;
     }
     if (jsonDocument.isNull() || jsonDocument.isEmpty()) {
         qDebug() << "Json null or empty!";
+        emit this->mThreadFinish();
         return;
     }
 
     QJsonObject jsonObject = jsonDocument.object();
     if (jsonObject.isEmpty() || jsonObject.size() == 0) {
         qDebug() << "Json object null or empty!";
+        emit this->mThreadFinish();
         return;
     }
-    if (jsonObject.contains("KylinWeather")) {
-        QJsonObject mainObj = jsonObject.value("KylinWeather").toObject();
-        if (mainObj.isEmpty() || mainObj.size() == 0) {
-            return;
+    //和风天气 v7：{"code":"200","now":{...}}，code 为字符串
+    if (jsonObject.value("code").toString() == "200") {
+        QJsonObject nowObj = jsonObject.value("now").toObject();
+        if (!nowObj.isEmpty()) {
+            //设置收藏城市实时天气
+            ui->lbTmp->setText(nowObj.value("temp").toString());
+            ui->lbwea->setText(nowObj.value("text").toString());
+            ui->lbTmpUnit->setText("℃");
+            QString weather_code = nowObj.value("icon").toString();
+            int code  = weather_code.toInt();
+            QString returnStr = convertCodeToBackgroud(code);
+            QString picStr = QString("QLabel{background-image:url(%1);border-radius:4px}").arg(returnStr);
+            ui->lbBackImage->setStyleSheet(picStr);
         }
-        if (mainObj.contains("weather")) {
-            QJsonObject weatherObj = mainObj.value("weather").toObject();
-            if (!weatherObj.isEmpty() && weatherObj.size() > 0) {
-                //设置收藏城市实时天气
-                QString location_msg = weatherObj.value("location").toString();
-                if (location_msg != ""){
-                    ui->lbCityName->setText(location_msg);
-                }
-
-                QString now_msg = weatherObj.value("now").toString();
-                if (now_msg != ""){
-                    QStringList strList = now_msg.split(",");
-                    QJsonObject m_json;
-                    foreach(QString strKey, strList){
-                        if (strKey != ""){
-                            m_json.insert(strKey.split("=").at(0), strKey.split("=").at(1));
-                        }
-                    }
-
-                    ui->lbTmp->setText(m_json.value("tmp").toString());
-                    ui->lbwea->setText(m_json.value("cond_txt").toString());
-                    ui->lbTmpUnit->setText("℃");
-                    QString weather_code = m_json.value("cond_code").toString();
-                    int code  = weather_code.toInt();
-                    QString returnStr = convertCodeToBackgroud(code);
-                    QString picStr = QString("QLabel{background-image:url(%1);border-radius:4px}").arg(returnStr);
-                    ui->lbBackImage->setStyleSheet(picStr);
-                }
-            }
-        } //end if (mainObj.contains("weather"))
-    } //end if (jsonObject.contains("KylinWeather"))
+    }
     emit this->mThreadFinish();
 }
 

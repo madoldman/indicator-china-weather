@@ -25,7 +25,6 @@
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkRequest>
 #include <QtNetwork/QNetworkReply>
-#include <QtNetwork/QNetworkConfigurationManager>
 
 #include <QWidget>
 #include <QTime>

@@ -28,6 +28,10 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
+    // Wayland 会话下 Motif 等 X11 窗口属性无效，必须以 FramelessWindowHint 声明无边框，
+    // 否则 KWin 会给窗口加标题栏；X11 下 Qt 也会据此自动套用无边框，与点击时的 Motif 设置一致
+    setWindowFlags(windowFlags() | Qt::FramelessWindowHint);
+
     // 用户手册功能
     mDaemonIpcDbus = new DaemonDbus();
 
@@ -187,7 +191,7 @@ void MainWindow::initControlQss()
     titleLayout->addWidget(ui->btnMinimize);
     titleLayout->addWidget(ui->btnCancel);
     titleLayout->setSpacing(4);
-    titleLayout->setMargin(4);
+    titleLayout->setContentsMargins(4, 4, 4, 4);
     titleWid->setLayout(titleLayout);
     titleWid->setFixedWidth(865);
     titleWid->move(0,0);
@@ -447,8 +451,11 @@ void MainWindow::closeActivated()
 //处理点击托盘图标事件
 void MainWindow::handleIconClicked(){
     qDebug()<<"MainWindow::handleIconClicked";
-    QDesktopWidget* m = QApplication::desktop();
-    QRect desk_rect = m->screenGeometry(m->screenNumber(QCursor::pos()));
+    // Qt6 移除了 QDesktopWidget，改用 QScreen 获取光标所在屏幕几何
+    QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    QRect desk_rect = screen->geometry();
     int desk_x = desk_rect.width();
     int desk_y = desk_rect.height();
     int x = this->width();
@@ -538,8 +545,11 @@ void MainWindow::handleIconClickedSub()
         this->m_menu->aboutWindow->close();
     }
     if(!this->isVisible()){
-        QDesktopWidget* m = QApplication::desktop();
-        QRect desk_rect = m->screenGeometry(m->screenNumber(QCursor::pos()));
+        // Qt6 移除了 QDesktopWidget，改用 QScreen 获取光标所在屏幕几何
+        QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
+        if (!screen)
+            screen = QGuiApplication::primaryScreen();
+        QRect desk_rect = screen->geometry();
         int desk_x = desk_rect.width();
         int desk_y = desk_rect.height();
         int x = this->width();
@@ -753,7 +763,6 @@ void MainWindow::onSetObserveWeather(ObserveWeather m_observeweather)
     ui->lbCurrHum->hide();
 
     if (m_observeweather.city != "") {
-        m_weatherManager->postSystemInfoToServer(); //将当前城市告诉给服务器
 //        emit m_leftupcitybtn ->requestSetCityName(m_observeweather.city); //更新左上角按钮显示的城市
         emit m_menu->addCityAction->requestSetCityName(m_observeweather.city); //更新中间Label显示的城市
     }

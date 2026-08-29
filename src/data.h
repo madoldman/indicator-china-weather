@@ -23,6 +23,28 @@
 #include <QObject>
 #include <QMetaType>
 
+// 和风天气（QWeather）API v7 主机与凭据（集中定义）
+//
+// 凭据从环境变量运行时读取，不硬编码进源码：
+//   QWEATHER_API_KEY       （必须）用于 X-QW-Api-Key 请求头认证，配置方式见 README「和风天气凭据配置」
+//   QWEATHER_CREDENTIAL_ID （可选）凭据 ID，仅用于未来的 JWT 认证或日志标识，API Key 认证方式不使用
+namespace QWeather {
+
+inline constexpr char DEVAPI_HOST[] = "https://devapi.qweather.com"; // 天气数据 API 主机
+inline constexpr char GEOAPI_HOST[] = "https://geoapi.qweather.com"; // 城市信息查询 API 主机（当前城市搜索走本地 china-city-list.csv，暂未使用）
+
+inline QString apiKey()
+{
+    return qEnvironmentVariable("QWEATHER_API_KEY").trimmed();
+}
+
+inline QString credentialId()
+{
+    return qEnvironmentVariable("QWEATHER_CREDENTIAL_ID").trimmed();
+}
+
+} // namespace QWeather
+
 struct ItemData
 {
     QString cityId;

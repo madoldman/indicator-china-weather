@@ -42,7 +42,6 @@ public:
 
     void startGetTheWeatherData(QString cityId);
     void startTestNetwork();
-    void postSystemInfoToServer();
     void startAutoLocationTask();
 
 //    int getTaskBarPos(QString str);

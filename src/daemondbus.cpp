@@ -28,7 +28,8 @@ int DaemonDbus::daemonIsNotRunning()
     if (!conn.isConnected())
         return -1;
 
-    QDBusReply<QString> reply = conn.interface()->call("GetNameOwner", service_name);
+    // Qt6 禁止 char* 隐式构造 QVariant，需显式转为 QString
+    QDBusReply<QString> reply = conn.interface()->call("GetNameOwner", QString::fromLatin1(service_name));
     return reply.value() == "";
 }
 

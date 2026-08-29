@@ -46,7 +46,11 @@ signals:
     void updatecity();//需要
 
 protected:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    void enterEvent(QEnterEvent *event) Q_DECL_OVERRIDE;//Qt6 起 enterEvent 参数改为 QEnterEvent
+#else
     void enterEvent(QEvent *event) Q_DECL_OVERRIDE;
+#endif
     void leaveEvent(QEvent *event) Q_DECL_OVERRIDE;
     void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;//需要此功能的信号槽函数
     void mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;

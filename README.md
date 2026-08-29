@@ -1,6 +1,6 @@
 # indicator-china-weather
 
-The weather data are from the heweather API s6 version.
+The weather data are from the QWeather (和风天气) API v7 (requires your own API key, see「和风天气凭据配置」below).
 
 ![](./doc/weather_zh_CN.png)
 
@@ -10,35 +10,25 @@ The weather data are from the heweather API s6 version.
 
 
 
-### v1.0 test url
+### v4.0 test url（和风天气 API v7，需认证头 `X-QW-Api-Key: your-key`）
 
-+ http://service.ubuntukylin.com:8001/weather/api/1.0/observe/101250101/
++ 实况天气：`https://devapi.qweather.com/v7/weather/now?location=101250101&lang=zh`
 
-+ http://service.ubuntukylin.com:8001/weather/api/1.0/heweather_forecast/101250101/
++ 天气预报（7 天，UI 显示 7 天）：`https://devapi.qweather.com/v7/weather/7d?location=101250101&lang=zh`
 
-+ http://service.ubuntukylin.com:8001/weather/pingnetwork/
++ 实时空气质量：`https://devapi.qweather.com/v7/air/now?location=101250101&lang=zh`
 
-+ http://service.ubuntukylin.com:8001/weather/pinginformation/
++ 生活指数（1运动 2洗车 3穿衣 5紫外线 9感冒 10空气污染扩散）：`https://devapi.qweather.com/v7/indices/1d?location=101250101&type=1,2,3,5,9,10&lang=zh`
 
++ 城市信息查询：`https://geoapi.qweather.com/v2/city/lookup?location=changsha&lang=zh`
 
-### v2.0 test url
+curl 示例（响应为 gzip，curl 加 `--compressed`）：
 
-+ http://service.ubuntukylin.com:8001/weather/api/2.0/heweather_observe_s6/101250101
+```bash
+curl --compressed -H "X-QW-Api-Key: your-key" "https://devapi.qweather.com/v7/weather/now?location=101250101&lang=zh"
+```
 
-+ http://service.ubuntukylin.com:8001/weather/api/2.0/heweather_forecast_s6/101250101
-
-+ https://free-api.heweather.com/s6/weather?location=CN101250101&key=xxxx
-
-+ https://free-api.heweather.com/s6/air/now?location=CN101250101&key=xxxx
-
-
-### v3.0 test url
-
-+ http://service.ubuntukylin.com:8001/weather/api/3.0/heweather_data_s6/101250101
-
-+ https://free-api.heweather.net/s6/weather?location=CN101250101&key=xxxx
-
-+ https://free-api.heweather.net/s6/air/now?location=CN101250101&key=xxxx
+说明：location 使用 101 风格的 LocationID；图标代码体系（100-999）与下文图标表一致，`icon`/`iconDay`/`iconNight` 字段直接对应。
 
 
 ## Arch Linux 安装（本仓库打包）
@@ -48,10 +38,11 @@ The weather data are from the heweather API s6 version.
 ### 安装依赖
 
 ```bash
-sudo pacman -S --needed base-devel git geoip qt5-base qt5-tools gsettings-qt5 kwindowsystem5
+sudo pacman -S --needed base-devel git geoip qt6-base qt6-tools gsettings-qt6 kwindowsystem cmake extra-cmake-modules
 ```
 
-+ 本分支 3.1.2 依赖 UKUI 专属日志库 ukui-log4qt，该库在 Arch 官方仓库与 AUR 均无包，PKGBUILD 会在 prepare() 阶段自动补丁移除，仅影响内部日志初始化，天气功能不受影响
++ 本分支 3.1.2 已移植到 Qt6 并迁移到 CMake 构建，托盘 applet 兼容 Plasma 6（X11/Wayland 会话）
++ ukui-log4qt 为 UKUI 专属日志库，在 Arch 官方仓库与 AUR 均无包，属于可选依赖，本打包默认不启用（仅影响内部日志初始化，天气功能不受影响）
 
 ### 打包安装
 
@@ -71,6 +62,28 @@ makepkg -si
 
 + 修改 PKGBUILD 后，在 `archlinux/` 目录执行 `makepkg --printsrcinfo > .SRCINFO` 重新生成元数据
 + 如已安装 namcap，可执行 `namcap archlinux/PKGBUILD` 做打包检查
+
+
+## 和风天气凭据配置
+
+应用直连和风天气（QWeather）API v7，需在运行环境中提供自己的凭据（不随源码/打包分发）：
+
++ `QWEATHER_API_KEY`（必须）：用于 `X-QW-Api-Key` 请求头认证，在和风天气控制台创建项目后获取
++ `QWEATHER_CREDENTIAL_ID`（可选）：凭据 ID，当前 API Key 认证方式不使用，仅作标识保存（供未来 JWT 认证或日志标识）
+
+推荐写入 `~/.profile`：
+
+```bash
+export QWEATHER_API_KEY="你的API_KEY"
+export QWEATHER_CREDENTIAL_ID="你的凭据ID"
+```
+
+生效方式说明：
+
++ 重新登录桌面会话后生效（SDDM/Plasma 登录时会读取 `~/.profile`，开机自启的应用继承会话环境）
++ 也可使用 `~/.config/environment.d/qweather.conf`（systemd 用户会话）方式，写入 `QWEATHER_API_KEY=你的API_KEY` 与 `QWEATHER_CREDENTIAL_ID=你的凭据ID`
++ 从终端手动启动时，确保该终端已重新登录或 source 过上述文件
++ 未设置 `QWEATHER_API_KEY` 时，应用启动日志会输出中文告警并跳过全部天气请求，界面保持无数据状态（不会崩溃）
 
 
 ### Internationalization

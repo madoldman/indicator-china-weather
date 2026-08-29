@@ -109,7 +109,7 @@ PromptWidget::PromptWidget(const QString &text, QWidget *parent, const QString &
     m_textLabel->setText(text);
     QFont font = m_textLabel->font();
     const QFontMetrics fm(font);
-    m_textLabel->setFixedWidth(fm.width(m_textLabel->text()));
+    m_textLabel->setFixedWidth(fm.horizontalAdvance(m_textLabel->text()));
 
     if (m_isMovie) {
         m_movie = new QMovie(movieSouce);
@@ -150,7 +150,11 @@ void PromptWidget::setIconAndText(const QString &iconPath, const QString &text)
     m_textLabel->setText(text);
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+void PromptWidget::enterEvent(QEnterEvent *event)
+#else
 void PromptWidget::enterEvent(QEvent *event)
+#endif
 {
     QFrame::enterEvent(event);
 
@@ -160,7 +164,7 @@ void PromptWidget::enterEvent(QEvent *event)
 
 void PromptWidget::leaveEvent(QEvent *event)
 {
-    QFrame::enterEvent(event);
+    QFrame::leaveEvent(event);
 
     //m_closeBtn->setVisible(false);
 }

@@ -19,6 +19,7 @@
 
 #include "menumodule.h"
 #include "xatom-helper.h"
+#include <QActionGroup>//Qt6 中 QAction 相关类不再随其它头文件传递引入
 
 menuModule::menuModule(QWidget *parent = nullptr) : QWidget(parent)
 {
@@ -119,6 +120,11 @@ void menuModule::themeUpdate(){
 }
 
 void menuModule::setStyleByThemeGsetting(){
+    // org.ukui.style 为 UKUI 桌面专属 schema，Plasma 等无此 schema 的环境回退浅色主题
+    if (!m_pGsettingThemeData) {
+        setThemeLight();
+        return;
+    }
     QString nowThemeStyle = m_pGsettingThemeData->get("styleName").toString();
     if("ukui-dark" == nowThemeStyle || "ukui-black" == nowThemeStyle)
     {
@@ -149,13 +155,15 @@ void menuModule::triggerThemeMenu(QAction *act){
     QString str = act->text();
     if("Light" == str){
         themeStatus = themeLightOnly;
-        disconnect(m_pGsettingThemeData,&QGSettings::changed,this,&menuModule::dealSystemGsettingChange);
+        if (m_pGsettingThemeData)
+            disconnect(m_pGsettingThemeData,&QGSettings::changed,this,&menuModule::dealSystemGsettingChange);
         m_pGsettingThemeStatus->set("thememode","lightonly");
 //        disconnect()
         setThemeLight();
     }else if("Dark" == str){
         themeStatus = themeBlackOnly;
-        disconnect(m_pGsettingThemeData,&QGSettings::changed,this,&menuModule::dealSystemGsettingChange);
+        if (m_pGsettingThemeData)
+            disconnect(m_pGsettingThemeData,&QGSettings::changed,this,&menuModule::dealSystemGsettingChange);
         m_pGsettingThemeStatus->set("thememode","darkonly");
         setThemeDark();
     }else{
@@ -207,7 +215,7 @@ void menuModule::initAbout(){
     QVBoxLayout *mainlyt = new QVBoxLayout();
     QHBoxLayout *titleLyt = initTitleBar();
     QVBoxLayout *bodylyt = initBody();
-    mainlyt->setMargin(0);
+    mainlyt->setContentsMargins(0, 0, 0, 0);
     mainlyt->addLayout(titleLyt);
     mainlyt->addLayout(bodylyt);
     mainlyt->addStretch();
@@ -235,7 +243,7 @@ QHBoxLayout* menuModule::initTitleBar(){
     QHBoxLayout *hlyt = new QHBoxLayout;
     titleText->setText(tr("Weather"));
     hlyt->setSpacing(0);
-    hlyt->setMargin(4);
+    hlyt->setContentsMargins(4, 4, 4, 4);
     hlyt->addSpacing(3);
     hlyt->addWidget(titleIcon,0,Qt::AlignCenter); //居下显示
     hlyt->addSpacing(8);
@@ -271,7 +279,7 @@ QVBoxLayout* menuModule::initBody(){
     bodySupport->setOpenExternalLinks(true);
     bodySupport->setContextMenuPolicy(Qt::NoContextMenu);
     QVBoxLayout *vlyt = new QVBoxLayout;
-    vlyt->setMargin(0);
+    vlyt->setContentsMargins(0, 0, 0, 0);
     vlyt->setSpacing(0);
     vlyt->addSpacing(20);
     vlyt->addWidget(bodyIcon,0,Qt::AlignHCenter);

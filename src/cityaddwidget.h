@@ -31,7 +31,6 @@
 #include <QPainterPath>
 #include <QWidget>
 #include <QButtonGroup>
-#include <QObjectUserData>
 #include <QSortFilterProxyModel>
 #include <QGSettings>
 namespace Ui {

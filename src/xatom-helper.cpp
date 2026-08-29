@@ -24,7 +24,7 @@
 
 #include <limits.h>
 
-#include <QX11Info>
+#include <QGuiApplication>
 
 #include <X11/X.h>
 #include <X11/Xatom.h>
@@ -32,6 +32,15 @@
 #include <NETWM>
 
 static XAtomHelper *global_instance = nullptr;
+
+// Qt6 移除了 QX11Info，这里改用进程级缓存的独立 XLib 连接。
+// 仅在 X11 会话下才会被调用：非 X11 平台（如 Wayland）上构造函数不初始化
+// 任何 atom，成员函数均以 atom == None 提前返回，不会走到这里
+static Display *x11Display()
+{
+    static Display *display = XOpenDisplay(nullptr);
+    return display;
+}
 
 XAtomHelper *XAtomHelper::getInstance()
 {
@@ -83,7 +92,7 @@ bool XAtomHelper::isUKUIDecorationWindow(int winId)
 
     bool isUKUIDecoration = false;
 
-    XGetWindowProperty(QX11Info::display(), winId, m_ukuiDecorationAtion,
+    XGetWindowProperty(x11Display(), winId, m_ukuiDecorationAtion,
                        0, LONG_MAX, false,
                        m_ukuiDecorationAtion, &type,
                        &format, &nitems,
@@ -109,7 +118,7 @@ UnityCorners XAtomHelper::getWindowBorderRadius(int winId)
     uchar *data;
 
     if (m_unityBorderRadiusAtom != None) {
-        XGetWindowProperty(QX11Info::display(), winId, m_unityBorderRadiusAtom,
+        XGetWindowProperty(x11Display(), winId, m_unityBorderRadiusAtom,
                            0, LONG_MAX, false,
                            XA_CARDINAL, &type,
                            &format, &nitems,
@@ -136,7 +145,7 @@ void XAtomHelper::setWindowBorderRadius(int winId, const UnityCorners &data)
 
     ulong corners[4] = {data.topLeft, data.topRight, data.bottomLeft, data.bottomRight};
 
-    XChangeProperty(QX11Info::display(), winId, m_unityBorderRadiusAtom, XA_CARDINAL,
+    XChangeProperty(x11Display(), winId, m_unityBorderRadiusAtom, XA_CARDINAL,
                     32, XCB_PROP_MODE_REPLACE, (const unsigned char *) &corners, sizeof (corners)/sizeof (corners[0]));
 }
 
@@ -147,7 +156,7 @@ void XAtomHelper::setWindowBorderRadius(int winId, int topLeft, int topRight, in
 
     ulong corners[4] = {(ulong)topLeft, (ulong)topRight, (ulong)bottomLeft, (ulong)bottomRight};
 
-    XChangeProperty(QX11Info::display(), winId, m_unityBorderRadiusAtom, XA_CARDINAL,
+    XChangeProperty(x11Display(), winId, m_unityBorderRadiusAtom, XA_CARDINAL,
                     32, XCB_PROP_MODE_REPLACE, (const unsigned char *) &corners, sizeof (corners)/sizeof (corners[0]));
 }
 
@@ -156,7 +165,7 @@ void XAtomHelper::setUKUIDecoraiontHint(int winId, bool set)
     if (m_ukuiDecorationAtion == None)
         return;
 
-    XChangeProperty(QX11Info::display(), winId, m_ukuiDecorationAtion, m_ukuiDecorationAtion, 32, XCB_PROP_MODE_REPLACE, (const unsigned char *) &set, 1);
+    XChangeProperty(x11Display(), winId, m_ukuiDecorationAtion, m_ukuiDecorationAtion, 32, XCB_PROP_MODE_REPLACE, (const unsigned char *) &set, 1);
 }
 
 void XAtomHelper::setWindowMotifHint(int winId, const MotifWmHints &hints)
@@ -164,7 +173,7 @@ void XAtomHelper::setWindowMotifHint(int winId, const MotifWmHints &hints)
     if (m_unityBorderRadiusAtom == None)
         return;
 
-    XChangeProperty(QX11Info::display(), winId, m_motifWMHintsAtom, m_motifWMHintsAtom,
+    XChangeProperty(x11Display(), winId, m_motifWMHintsAtom, m_motifWMHintsAtom,
                     32, XCB_PROP_MODE_REPLACE, (const unsigned char *)&hints, sizeof (MotifWmHints)/ sizeof (ulong));
 }
 
@@ -181,7 +190,7 @@ MotifWmHints XAtomHelper::getWindowMotifHint(int winId)
     ulong nitems;
     ulong bytes_after;
 
-    XGetWindowProperty(QX11Info::display(), winId, m_motifWMHintsAtom,
+    XGetWindowProperty(x11Display(), winId, m_motifWMHintsAtom,
                        0, sizeof (MotifWmHints)/sizeof (long), false, AnyPropertyType, &type,
                        &format, &nitems, &bytes_after, &data);
 
@@ -196,12 +205,18 @@ MotifWmHints XAtomHelper::getWindowMotifHint(int winId)
 
 XAtomHelper::XAtomHelper(QObject *parent) : QObject(parent)
 {
-    if (!QX11Info::isPlatformX11())
+    // Qt6 下用 platformName 判断 X11；非 X11（如 Wayland）时不初始化任何 atom，
+    // 后续所有 X 属性操作随 atom == None 守卫被安全跳过
+    if (QGuiApplication::platformName() != QLatin1String("xcb"))
         return;
 
-    m_motifWMHintsAtom = XInternAtom(QX11Info::display(), "_MOTIF_WM_HINTS", true);
-    m_unityBorderRadiusAtom = XInternAtom(QX11Info::display(), "_UNITY_GTK_BORDER_RADIUS", false);
-    m_ukuiDecorationAtion = XInternAtom(QX11Info::display(), "_KWIN_UKUI_DECORAION", false);
+    Display *display = x11Display();
+    if (!display)
+        return;
+
+    m_motifWMHintsAtom = XInternAtom(display, "_MOTIF_WM_HINTS", true);
+    m_unityBorderRadiusAtom = XInternAtom(display, "_UNITY_GTK_BORDER_RADIUS", false);
+    m_ukuiDecorationAtion = XInternAtom(display, "_KWIN_UKUI_DECORAION", false);
 }
 
 Atom XAtomHelper::registerUKUICsdNetWmSupportAtom()

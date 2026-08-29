@@ -19,7 +19,10 @@ class QByteArray;
 template<class T> class QList;
 template<class Key, class Value> class QMap;
 class QString;
+// Qt6 中 QStringList 已是 QList<QString> 的别名，不能作为类前置声明
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 class QStringList;
+#endif
 class QVariant;
 QT_END_NAMESPACE
 

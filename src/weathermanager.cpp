@@ -104,11 +104,6 @@ void WeatherManager::startTestNetwork()
     emit m_weatherWorker->requestTestNetwork();
 }
 
-void WeatherManager::postSystemInfoToServer()
-{
-    emit m_weatherWorker->requestPostHostInfoToWeatherServer();
-}
-
 void WeatherManager::startAutoLocationTask()
 {
     emit m_geoipWorker->requestStartWork();

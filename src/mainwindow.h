@@ -45,7 +45,6 @@
 #include <QMouseEvent>
 #include <QDebug>
 #include <QButtonGroup>
-#include <QObjectUserData>
 #include <QSortFilterProxyModel>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -53,7 +52,8 @@
 #include <QSystemTrayIcon>
 #include <QRect>
 #include <QScreen>
-#include <QDesktopWidget>
+#include <QGuiApplication>
+#include <QCursor>
 #include <QTime>
 #include <QTimer>
 #include <QFileInfo>

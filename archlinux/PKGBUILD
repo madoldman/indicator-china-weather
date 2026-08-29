@@ -2,46 +2,40 @@
 # Contributor: Felix Yan <felixonmars@archlinux.org>
 #
 # 本 PKGBUILD 完全离线构建：source 通过本地 git file:// 协议指向本仓库自身
-# （PKGBUILD 所在 archlinux/ 目录的上一级），检出 archlinux 分支——该分支同时
+# （PKGBUILD 所在 archlinux/ 目录的上一级），检出 archlinux 分支--该分支同时
 # 包含应用源码与打包文件，打包的就是当前检出的这份代码，构建全程不访问网络。
 # 代码更新方式：将改动提交/合入 archlinux 分支后，在本目录重跑 makepkg 即可；
 # pkgver 为静态版本号（与 debian/changelog 保持一致），无需更新校验和。
 # 参照 Arch Linux 官方打包仓库适配：
 # https://gitlab.archlinux.org/archlinux/packaging/packages/indicator-china-weather/
 #
-# 相比官方打包的 3.0.4：本分支 3.1.2 新增 gsettings-qt5、kwindowsystem5
-# 两个依赖（均在 extra 仓库，对应 debian/control 中的 libgsettings-qt-dev、
-# libkf5windowsystem-dev）；UKUI 专属日志库 ukui-log4qt（对应 libukui-log4qt-dev）
-# 在 Arch 官方仓库与 AUR 均无包，prepare() 阶段补丁移除，日志回退 Qt 默认输出。
+# 相比官方打包的 3.0.4：本分支 3.1.2 已由 Qt5/qmake 移植到 Qt6/CMake 构建
+# （托盘 applet 兼容 Plasma 6 的 X11/Wayland 会话），新增 gsettings-qt6、
+# kwindowsystem（KF6）、geoip 三个依赖（均在 extra 仓库，对应 debian/control
+# 中的 libgsettings-qt-dev、libkf6windowsystem-dev、libgeoip-dev）；
+# UKUI 专属日志库 ukui-log4qt（对应 libukui-log4qt-dev）在 Arch 官方仓库与
+# AUR 均无包，构建时不启用（CMake 选项 ENABLE_UKUI_LOG4QT，默认 OFF），
+# 日志回退 Qt 默认输出。
 
 pkgname=indicator-china-weather
 pkgver=3.1.2
-pkgrel=1
+pkgrel=2
 pkgdesc="Indicator that displays China weather information"
 arch=('x86_64')
 license=('GPL')
 url="https://github.com/madoldman/indicator-china-weather"
-depends=('geoip' 'qt5-base' 'gsettings-qt5' 'kwindowsystem5')
-makedepends=('git' 'qt5-tools')
+depends=('geoip' 'qt6-base' 'gsettings-qt6' 'kwindowsystem')
+makedepends=('git' 'cmake' 'extra-cmake-modules' 'qt6-tools')
 source=("$pkgname::git+file://$startdir/..#branch=archlinux")
 sha512sums=('SKIP')
 
-prepare() {
-  cd "$srcdir/$pkgname"
-  # 去掉 Debian 专用的 dpkg-buildflags 编译参数
-  sed -i '/dpkg-buildflags/d' indicator-china-weather.pro
-  # ukui-log4qt 为 UKUI 专属日志库，Arch 官方仓库与 AUR 均无包，打包时移除（日志回退 Qt 默认输出）
-  sed -i '/ukui-log4qt/d' indicator-china-weather.pro src/main.cpp
-  sed -i '/initUkuiLog4qt/d' src/main.cpp
-}
-
 build() {
-  cd "$srcdir/$pkgname"
-  qmake-qt5 PREFIX=/usr
-  make
+  cmake -S "$srcdir/$pkgname" -B "$srcdir/$pkgname/build" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build "$srcdir/$pkgname/build"
 }
 
 package() {
-  cd "$srcdir/$pkgname"
-  make INSTALL_ROOT="$pkgdir" install
+  DESTDIR="$pkgdir" cmake --install "$srcdir/$pkgname/build"
 }
