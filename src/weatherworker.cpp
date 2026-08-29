@@ -316,7 +316,6 @@ void WeatherWorker::parseForecastReply(const QJsonObject &root)
     }
 
     const QJsonArray daily = root.value("daily").toArray();
-    qWarning() << "[FCAST] daily size =" << daily.size();
     if (daily.isEmpty()) {
         return;
     }
