@@ -3,6 +3,8 @@
 #   2) Plasmoid 包（package/ 原样安装到系统小部件目录）
 
 find_package(Qt6 REQUIRED COMPONENTS Qml Network)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GSETTINGS_QT6 REQUIRED IMPORTED_TARGET gsettings-qt6)
 
 # QML 模块产物（后端库 + 自动生成的插件 + qmldir）集中输出到本目录下，
 # 便于统一安装与本地（未安装时）通过 QML2_IMPORT_PATH 加载测试
@@ -17,7 +19,7 @@ qt_add_qml_module(chinaweather
         src/weatherclient.cpp
 )
 target_include_directories(chinaweather PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(chinaweather PRIVATE Qt6::Qml Qt6::Network)
+target_link_libraries(chinaweather PRIVATE Qt6::Qml Qt6::Network PkgConfig::GSETTINGS_QT6)
 # 后端库与插件同目录输出（/…/qml/org/madoldman/chinaweather），运行时才能互相找到
 set_target_properties(chinaweather PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${QT_QML_OUTPUT_DIRECTORY}/org/madoldman/chinaweather)

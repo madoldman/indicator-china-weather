@@ -12,10 +12,6 @@
     <entry name="cityName" type="String">
       <label>城市名称（留空 = 自动定位）</label>
     </entry>
-    <entry name="refreshInterval" type="Int">
-      <label>自动刷新间隔（分钟）</label>
-      <default>30</default>
-    </entry>
   </group>
 
 </kcfg>

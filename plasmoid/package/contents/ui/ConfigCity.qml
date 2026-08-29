@@ -18,18 +18,17 @@ ColumnLayout {
 
     property string cfg_cityId
     property string cfg_cityName
-    property int cfg_refreshInterval
 
     // Plasma 6.7 配置框架会额外注入以下属性，显式声明以消除 plasmashell 告警
     property string cfg_cityIdDefault
     property string cfg_cityNameDefault
-    property int cfg_refreshIntervalDefault
     property string title
 
     // 搜索结果（QVariantList，元素为 {id, name, province}）
     property var searchResults: []
 
-    // 仅用于本地城市表搜索的客户端实例（不发网络请求）
+    // 仅用于本地城市表搜索的客户端实例（不发网络请求；配置对话框是
+    // 独立引擎，无法经 root 访问主界面的客户端）
     WeatherClient {
         id: citySearchClient
     }
@@ -98,17 +97,20 @@ ColumnLayout {
         spacing: Kirigami.Units.smallSpacing
 
         PlasmaComponents3.Label {
-            text: i18n("刷新间隔（分钟）：")
+            text: i18n("刷新间隔：")
             color: Kirigami.Theme.textColor
         }
 
-        PlasmaComponents3.SpinBox {
-            id: refreshSpin
-            from: 5
-            to: 360
-            // kcfg 旧值可能超出范围，显示时收敛到有效区间
-            value: Math.min(Math.max(configPage.cfg_refreshInterval || 30, refreshSpin.from), refreshSpin.to)
-            onValueModified: configPage.cfg_refreshInterval = value
+        // 预设档位与应用菜单一致，保证两侧状态永远一致；选择即生效
+        PlasmaComponents3.ComboBox {
+            id: intervalBox
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 8
+            model: [5, 10, 20, 30, 60]
+            currentIndex: {
+                var idx = model.indexOf(citySearchClient.refreshInterval)
+                return idx >= 0 ? idx : 2 // 历史遗留的非预设值回退显示 20 分钟
+            }
+            onActivated: citySearchClient.refreshInterval = model[currentIndex]
         }
     }
 
@@ -117,7 +119,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: Kirigami.Theme.disabledTextColor
         font.pixelSize: Kirigami.Units.gridUnit * 0.7
-        text: i18n("间隔在保存后立即生效；和风天气凭据通过环境变量 QWEATHER_API_KEY 提供，配置方式见主仓库 README「和风天气凭据配置」章节。")
+        text: i18n("间隔选择后立即生效（应用菜单与小部件自动同步）；和风天气凭据通过环境变量 QWEATHER_API_KEY 提供，配置方式见主仓库 README「和风天气凭据配置」章节。")
     }
 
     function updateResults() {

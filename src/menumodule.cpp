@@ -61,7 +61,11 @@ void menuModule::initAction(){
     actionAbout->setText(tr("About"));
     QAction *actionQuit = new QAction(m_menu);
     actionQuit->setText(tr("Quit"));
-    actions<<addCityAction<<actionHelp<<actionAbout<<actionQuit;
+    QAction *actionInterval = new QAction(m_menu);
+    actionInterval->setText(tr("刷新间隔"));
+    QAction *actionAddPanel = new QAction(m_menu);
+    actionAddPanel->setText(tr("添加小部件到面板"));
+    actions<<addCityAction<<actionInterval<<actionAddPanel<<actionHelp<<actionAbout<<actionQuit;
     m_menu->addActions(actions);
 //    互斥按钮组
     QMenu *themeMenu = new QMenu;
@@ -87,6 +91,34 @@ void menuModule::initAction(){
     setThemeFromLocalThemeSetting(themeActions);
     themeUpdate();
     connect(themeMenu,&QMenu::triggered,this,&menuModule::triggerThemeMenu);
+
+    // 刷新间隔子菜单：读写 gsettings refresh-interval，改后经信号同步主窗口定时器
+    intervalMenu = new QMenu;
+    QActionGroup *intervalGroup = new QActionGroup(this);
+    const QList<int> intervalChoices = {5, 10, 20, 30, 60};
+    int currentInterval = 20;
+    if (m_pGsettingThemeStatus) {
+        currentInterval = m_pGsettingThemeStatus->get("refresh-interval").toInt();
+        if (currentInterval <= 0) currentInterval = 20;
+    }
+    for (int minutes : intervalChoices) {
+        QAction *choice = new QAction(tr("%1 分钟").arg(minutes), intervalMenu);
+        choice->setCheckable(true);
+        choice->setData(minutes);
+        intervalGroup->addAction(choice);
+        intervalMenu->addAction(choice);
+        if (minutes == currentInterval) choice->setChecked(true);
+    }
+    // 非预设值兜底项：gsettings 里的值不在预设档位时（如小部件旧值），菜单打开时显示并勾选
+    customIntervalAction = new QAction(intervalMenu);
+    customIntervalAction->setCheckable(true);
+    customIntervalAction->setVisible(false);
+    intervalGroup->addAction(customIntervalAction);
+    intervalMenu->addAction(customIntervalAction);
+    actionInterval->setMenu(intervalMenu);
+    connect(intervalMenu,&QMenu::triggered,this,&menuModule::triggerIntervalMenu);
+    connect(m_menu,&QMenu::aboutToShow,this,&menuModule::refreshIntervalCheckedState);
+    connect(actionAddPanel,&QAction::triggered,this,&menuModule::addPanelAction);
 }
 
 void menuModule::setThemeFromLocalThemeSetting(QList<QAction* > themeActions)
@@ -144,6 +176,69 @@ void menuModule::triggerMenu(QAction *act){
         aboutAction();
     }else if(tr("Help") == str){
         helpAction();
+    }
+}
+
+// 菜单每次打开时按 gsettings 当前值刷新勾选，保证应用侧与小部件侧状态一致
+void menuModule::refreshIntervalCheckedState()
+{
+    if (!m_pGsettingThemeStatus || !intervalMenu) {
+        return;
+    }
+    const int current = qMax(1, m_pGsettingThemeStatus->get("refresh-interval").toInt());
+    const QList<int> presets = {5, 10, 20, 30, 60};
+    const bool isPreset = presets.contains(current);
+    for (QAction *a : intervalMenu->actions()) {
+        const int v = a->data().toInt();
+        if (v > 0) {
+            a->setChecked(v == current);
+        }
+    }
+    if (customIntervalAction) {
+        customIntervalAction->setText(tr("%1 分钟（当前）").arg(current));
+        customIntervalAction->setChecked(!isPreset);
+        customIntervalAction->setVisible(!isPreset);
+    }
+}
+
+void menuModule::triggerIntervalMenu(QAction *act){
+    const int minutes = act->data().toInt();
+    if (minutes <= 0) {
+        return;
+    }
+    if (m_pGsettingThemeStatus) {
+        m_pGsettingThemeStatus->set("refresh-interval", minutes);
+    }
+    emit refreshIntervalChanged(minutes);
+}
+
+// 经 plasmashell 脚本接口把天气小部件快捷加入面板（已在面板上则不重复添加）
+void menuModule::addPanelAction(){
+    const QString script = QStringLiteral(
+        "var found = false;"
+        "for (var i in panels()) {"
+        "    var p = panels()[i];"
+        "    for (var k in p.widgetIds) {"
+        "        var w = p.widgetById(p.widgetIds[k]);"
+        "        if (w && w.type == 'org.madoldman.chinaweather') found = true;"
+        "    }"
+        "}"
+        "if (!found && panels().length > 0) { panels()[0].addWidget('org.madoldman.chinaweather'); }"
+        "found ? 'exists' : 'added'");
+    QProcess gdbus;
+    gdbus.start(QStringLiteral("gdbus"), {QStringLiteral("call"), QStringLiteral("--session"),
+        QStringLiteral("--dest"), QStringLiteral("org.kde.plasmashell"),
+        QStringLiteral("--object-path"), QStringLiteral("/PlasmaShell"),
+        QStringLiteral("--method"), QStringLiteral("org.kde.PlasmaShell.evaluateScript"),
+        script});
+    gdbus.waitForFinished(5000);
+    const QString out = QString::fromUtf8(gdbus.readAllStandardOutput());
+    if (out.contains(QStringLiteral("added"))) {
+        QMessageBox::information(this, tr("天气"), tr("已将天气小部件添加到面板。"));
+    } else if (out.contains(QStringLiteral("exists"))) {
+        QMessageBox::information(this, tr("天气"), tr("面板上已有天气小部件。"));
+    } else {
+        QMessageBox::warning(this, tr("天气"), tr("添加失败：未检测到可用的 Plasma 面板。"));
     }
 }
 

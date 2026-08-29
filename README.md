@@ -43,6 +43,7 @@ sudo pacman -S --needed base-devel git geoip qt6-base qt6-tools gsettings-qt6 kw
 
 + 本分支 3.1.2 已移植到 Qt6 并迁移到 CMake 构建，并随包提供 Plasma 6 天气小部件（见下文「Plasma 小部件（Plasmoid）」章节）
 + 托盘应用的常驻托盘图标已下线，天气展示改由 Plasma 小部件承担；应用本体保留，可作为完整天气窗口启动
++ 应用窗口菜单提供「刷新间隔」（5/10/20/30/60 分钟，即时生效）与「添加小部件到面板」（快捷把 Plasmoid 加入 Plasma 面板，已存在则不重复添加）
 + ukui-log4qt 为 UKUI 专属日志库，在 Arch 官方仓库与 AUR 均无包，属于可选依赖，本打包默认不启用（仅影响内部日志初始化，天气功能不受影响）
 
 ### 打包安装

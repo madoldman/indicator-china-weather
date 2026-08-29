@@ -31,6 +31,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QProcess>
+#include <QGSettings>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
@@ -66,7 +67,17 @@ WeatherClient::WeatherClient(QObject *parent)
     // 凭据 ID（QWEATHER_CREDENTIAL_ID）仅用于 JWT 认证，API Key 方式不使用，这里不读取。
     m_apiKey = qEnvironmentVariable("QWEATHER_API_KEY").trimmed();
 
-    setRefreshInterval(30);
+    // 刷新间隔单一数据源 = gsettings org.china-weather-data.settings/refresh-interval，
+    // 与应用菜单共用；监听变更实现「任一侧修改，两侧同时生效」
+    if (QGSettings::isSchemaInstalled("org.china-weather-data.settings")) {
+        m_gsettings = new QGSettings("org.china-weather-data.settings", QByteArray(), this);
+        const int stored = m_gsettings->get(QStringLiteral("refresh-interval")).toInt();
+        if (stored > 0) {
+            m_refreshInterval = stored;
+        }
+        connect(m_gsettings, &QGSettings::changed, this, &WeatherClient::onGSettingsChanged);
+    }
+    setRefreshInterval(m_refreshInterval);
 }
 
 void WeatherClient::setCityId(const QString &cityId)
@@ -93,11 +104,21 @@ void WeatherClient::setCityName(const QString &cityName)
 
 void WeatherClient::setRefreshInterval(int minutes)
 {
-    const int clamped = qMax(1, minutes);
-    if (clamped == m_refreshInterval) {
+    const int clamped = qBound(5, minutes, 360);
+    // 写入 gsettings（单一数据源）：应用菜单与小部件任一侧修改都会经
+    // QGSettings::changed 回流到另一侧；随后立即应用一次，不依赖信号时序
+    if (m_gsettings) {
+        m_gsettings->set(QStringLiteral("refresh-interval"), clamped);
+    }
+    applyRefreshInterval(clamped);
+}
+
+void WeatherClient::applyRefreshInterval(int minutes)
+{
+    if (minutes <= 0 || minutes == m_refreshInterval) {
         return;
     }
-    m_refreshInterval = clamped;
+    m_refreshInterval = minutes;
     emit refreshIntervalChanged();
 
     // 按新间隔重建定时器
@@ -110,6 +131,16 @@ void WeatherClient::setRefreshInterval(int minutes)
     m_timer->setInterval(std::chrono::minutes(m_refreshInterval));
     connect(m_timer, &QTimer::timeout, this, &WeatherClient::refresh);
     m_timer->start();
+}
+
+void WeatherClient::onGSettingsChanged(const QString &key)
+{
+    if (key == QLatin1String("refresh-interval") && m_gsettings) {
+        const int stored = m_gsettings->get(QStringLiteral("refresh-interval")).toInt();
+        if (stored > 0) {
+            applyRefreshInterval(stored);
+        }
+    }
 }
 
 void WeatherClient::refresh()

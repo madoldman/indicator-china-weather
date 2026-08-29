@@ -40,6 +40,8 @@
 #include <QScreen>
 #include <QGSettings>
 #include <QMetaEnum>
+#include <QProcess>
+#include <QMessageBox>
 #include "daemondbus.h"
 #include "addcityaction.h"
 
@@ -57,6 +59,7 @@ public:
 signals:
     void menuModuleClose();
     void menuModuleSetThemeStyle(QString);
+    void refreshIntervalChanged(int minutes);
 public:
     QPushButton *menuButton = nullptr;
 
@@ -71,6 +74,8 @@ public:
 private:
     QMenu *m_menu = nullptr;
     QMenu *themeMenu = nullptr;
+    QMenu *intervalMenu = nullptr;
+    QAction *customIntervalAction = nullptr; //非预设值的兜底显示项
     QSize iconSize;
 //    QString appPath = "tools/kylin-usb-creator"; //拉起帮助菜单时使用appName字段
     QGSettings *m_pGsettingThemeData = nullptr;
@@ -96,6 +101,9 @@ private:
     void setStyle();
     void triggerMenu(QAction* act); //主菜单动作4
     void triggerThemeMenu(QAction* act); //主题动作
+    void triggerIntervalMenu(QAction* act); //刷新间隔动作
+    void refreshIntervalCheckedState(); //菜单打开时按 gsettings 回显勾选状态
+    void addPanelAction(); //把天气小部件快捷加入 Plasma 面板
     void aboutAction();
     void initAbout(); //关于窗口初始化
     void helpAction();

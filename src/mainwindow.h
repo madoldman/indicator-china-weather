@@ -89,6 +89,7 @@ public slots:
     void handleIconClickedSub();
 
     void onRefreshMainWindowWeather();
+    void onRefreshIntervalChanged(int minutes);
     void onHandelAbnormalSituation(QString abnormalText);
 
     void onSetForecastWeather(ForecastWeather m_forecastweather);

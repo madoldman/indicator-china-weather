@@ -19,17 +19,15 @@ import "WeatherIconUtil.js" as IconUtil
 PlasmaExtras.Representation {
     id: full
 
-    // 由 main.qml 注入的数据客户端
-    property WeatherClient weatherClient
-
     readonly property bool isNight: IconUtil.isNightHour(new Date().getHours())
+    readonly property bool isDarkTheme: IconUtil.isDarkTheme(Kirigami.Theme.textColor)
 
     // 弹出窗口的建议尺寸（内容较长时由内部 ScrollView 滚动）
     Layout.preferredWidth: Kirigami.Units.gridUnit * 25
     Layout.preferredHeight: Kirigami.Units.gridUnit * 30
 
     function iconSource(code) {
-        return Qt.resolvedUrl("icons/" + IconUtil.iconBase(code, isNight) + ".png")
+        return Qt.resolvedUrl(IconUtil.iconPath(code, isNight, isDarkTheme))
     }
 
     // 今天/明天直接标注，其余按日期算出星期
@@ -62,11 +60,11 @@ PlasmaExtras.Representation {
 
             PlasmaComponents3.Label {
                 text: {
-                    var name = full.weatherClient?.activeCityName ?? ""
+                    var name = root.weatherClient.activeCityName ?? ""
                     if (name.length === 0) {
-                        name = (full.weatherClient?.locating ?? false) ? i18n("正在定位…") : i18n("天气")
+                        name = (root.weatherClient.locating ?? false) ? i18n("正在定位…") : i18n("天气")
                     }
-                    if (full.weatherClient?.autoMode ?? false) {
+                    if (root.weatherClient.autoMode ?? false) {
                         name += i18n("·自动")
                     }
                     return name
@@ -81,18 +79,18 @@ PlasmaExtras.Representation {
             }
 
             Rectangle {
-                visible: (full.weatherClient?.airAqi ?? "").length > 0
+                visible: (root.weatherClient.airAqi ?? "").length > 0
                 implicitWidth: aqiLabel.implicitWidth + Kirigami.Units.largeSpacing
                 implicitHeight: aqiLabel.implicitHeight + Kirigami.Units.smallSpacing / 2
                 radius: Kirigami.Units.smallSpacing / 2
-                color: IconUtil.aqiColor(full.weatherClient?.airCategory ?? "")
+                color: IconUtil.aqiColor(root.weatherClient.airCategory ?? "")
                        || Kirigami.Theme.disabledTextColor
 
                 PlasmaComponents3.Label {
                     id: aqiLabel
                     anchors.centerIn: parent
-                    text: "AQI " + (full.weatherClient?.airAqi ?? "") + " "
-                          + (full.weatherClient?.airCategory ?? "")
+                    text: "AQI " + (root.weatherClient.airAqi ?? "") + " "
+                          + (root.weatherClient.airCategory ?? "")
                     color: "#ffffff"
                     font.pixelSize: Kirigami.Units.gridUnit * 0.7
                 }
@@ -111,12 +109,12 @@ PlasmaExtras.Representation {
             Layout.rightMargin: Kirigami.Units.largeSpacing
             spacing: Kirigami.Units.largeSpacing
 
-            Kirigami.Icon {
-                implicitWidth: Kirigami.Units.iconSizes.huge
-                implicitHeight: implicitWidth
-                source: full.iconSource(full.weatherClient?.nowIcon ?? "")
-                isMask: true
-                color: Kirigami.Theme.textColor
+            Image {
+                Layout.preferredWidth: Kirigami.Units.iconSizes.huge
+                Layout.preferredHeight: Layout.preferredWidth
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                source: full.iconSource(root.weatherClient.nowIcon)
             }
 
             ColumnLayout {
@@ -124,7 +122,7 @@ PlasmaExtras.Representation {
 
                 PlasmaComponents3.Label {
                     text: {
-                        var temp = full.weatherClient?.nowTemp ?? ""
+                        var temp = root.weatherClient.nowTemp ?? ""
                         return temp.length > 0 ? temp + "°C" : "--"
                     }
                     font.pixelSize: Kirigami.Units.gridUnit * 2
@@ -132,7 +130,7 @@ PlasmaExtras.Representation {
                 }
 
                 PlasmaComponents3.Label {
-                    text: full.weatherClient?.nowText ?? ""
+                    text: root.weatherClient.nowText ?? ""
                     font.pixelSize: Kirigami.Units.gridUnit * 0.9
                     color: Kirigami.Theme.textColor
                 }
@@ -153,8 +151,8 @@ PlasmaExtras.Representation {
                     font.pixelSize: Kirigami.Units.gridUnit * 0.75
                 }
                 PlasmaComponents3.Label {
-                    text: (full.weatherClient?.windDir ?? "") + " "
-                          + (full.weatherClient?.windScale ?? "") + i18n("级")
+                    text: (root.weatherClient.windDir ?? "") + " "
+                          + (root.weatherClient.windScale ?? "") + i18n("级")
                     color: Kirigami.Theme.textColor
                     font.pixelSize: Kirigami.Units.gridUnit * 0.75
                 }
@@ -164,7 +162,7 @@ PlasmaExtras.Representation {
                     font.pixelSize: Kirigami.Units.gridUnit * 0.75
                 }
                 PlasmaComponents3.Label {
-                    text: (full.weatherClient?.humidity ?? "") + "%"
+                    text: (root.weatherClient.humidity ?? "") + "%"
                     color: Kirigami.Theme.textColor
                     font.pixelSize: Kirigami.Units.gridUnit * 0.75
                 }
@@ -174,7 +172,7 @@ PlasmaExtras.Representation {
                     font.pixelSize: Kirigami.Units.gridUnit * 0.75
                 }
                 PlasmaComponents3.Label {
-                    text: (full.weatherClient?.feelsLike ?? "") + "°C"
+                    text: (root.weatherClient.feelsLike ?? "") + "°C"
                     color: Kirigami.Theme.textColor
                     font.pixelSize: Kirigami.Units.gridUnit * 0.75
                 }
@@ -197,7 +195,7 @@ PlasmaExtras.Representation {
             ListView {
                 id: dailyView
                 clip: true
-                model: full.weatherClient?.daily ?? []
+                model: root.weatherClient.daily ?? []
 
                 delegate: Item {
                     width: ListView.view.width
@@ -223,12 +221,12 @@ PlasmaExtras.Representation {
                             }
                         }
 
-                        Kirigami.Icon {
-                            implicitWidth: Kirigami.Units.iconSizes.smallMedium
-                            implicitHeight: implicitWidth
-                            source: full.iconSource(modelData.iconDay ?? "")
-                            isMask: true
-                            color: Kirigami.Theme.textColor
+                        Image {
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                            Layout.preferredHeight: Layout.preferredWidth
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            source: full.iconSource(modelData.iconDay)
                         }
 
                         PlasmaComponents3.Label {
@@ -251,7 +249,7 @@ PlasmaExtras.Representation {
                 PlasmaComponents3.Label {
                     anchors.centerIn: parent
                     visible: dailyView.count === 0
-                    text: full.weatherClient?.loading ?? false ? i18n("正在获取天气数据…") : i18n("暂无预报数据")
+                    text: root.weatherClient.loading ?? false ? i18n("正在获取天气数据…") : i18n("暂无预报数据")
                     color: Kirigami.Theme.disabledTextColor
                 }
             }
@@ -273,7 +271,7 @@ PlasmaExtras.Representation {
             rowSpacing: Kirigami.Units.smallSpacing
 
             Repeater {
-                model: full.weatherClient?.indices ?? []
+                model: root.weatherClient.indices ?? []
 
                 delegate: ColumnLayout {
                     spacing: 0
@@ -303,8 +301,8 @@ PlasmaExtras.Representation {
             Layout.fillWidth: true
             Layout.leftMargin: Kirigami.Units.largeSpacing
             Layout.rightMargin: Kirigami.Units.largeSpacing
-            visible: full.weatherClient?.error ?? false
-            text: full.weatherClient?.errorString ?? ""
+            visible: root.weatherClient.error ?? false
+            text: root.weatherClient.errorString ?? ""
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.negativeTextColor
             font.pixelSize: Kirigami.Units.gridUnit * 0.7
@@ -319,14 +317,14 @@ PlasmaExtras.Representation {
                 implicitWidth: Kirigami.Units.iconSizes.small
                 implicitHeight: implicitWidth
                 running: visible
-                visible: (full.weatherClient?.loading ?? false)
-                         || (full.weatherClient?.locating ?? false)
+                visible: (root.weatherClient.loading ?? false)
+                         || (root.weatherClient.locating ?? false)
             }
 
             PlasmaComponents3.Label {
                 Layout.fillWidth: true
-                text: (full.weatherClient?.updateTime ?? "").length > 0
-                      ? i18n("更新时间 %1", full.weatherClient.updateTime)
+                text: (root.weatherClient.updateTime ?? "").length > 0
+                      ? i18n("更新时间 %1", root.weatherClient.updateTime)
                       : ""
                 color: Kirigami.Theme.disabledTextColor
                 font.pixelSize: Kirigami.Units.gridUnit * 0.65

@@ -1,10 +1,11 @@
 /*
- * 天气代码（100-999，和风天气/和风 v7 通用体系）与包内图标文件名的映射。
+ * 天气代码（100-999，和风天气/和风 v7 通用体系）与包内图标文件的映射。
  *
- * 图标集取自本仓库 res/weather_icons/darkgrey（单色天气图标，与托盘应用同源），
- * 全套 75 张，其中 7 张为夜间变体（文件名带 n 后缀）。
- * 展示时配合 Kirigami.Icon 的 isMask: true 按主题文字色着色，
- * 深/浅色面板均可正常显示。
+ * 图标集取自本仓库 res/weather_icons（单色天气图标，与托盘应用同源）：
+ *   icons/white/    深色主题/面板使用（75 张，含 7 张夜间变体）
+ *   icons/darkgrey/ 浅色主题/面板使用（75 张，含 7 张夜间变体）
+ * 展示用普通 Image 渲染完整 artwork（不做单色遮罩，避免 Kirigami.Icon
+ * 把彩色/灰度图形渲染成剪影的问题）。
  */
 
 // 注意：QML 的 JS 库导入只导出 var 与 function，不能使用 const/let
@@ -29,7 +30,7 @@ function isNightHour(hour) {
     return hour < 6 || hour > 18;
 }
 
-// 返回图标基础文件名（不含扩展名）；夜间优先返回带 n 后缀的变体，
+// 返回图标基础文件名（不含目录与扩展名）；夜间优先返回带 n 后缀的变体，
 // 未知/缺失的天气代码统一回退到 999（未知）
 function iconBase(code, isNight) {
     var base = String(code || "999");
@@ -48,6 +49,18 @@ function iconBase(code, isNight) {
         base = "999";
     }
     return base;
+}
+
+// 返回图标相对本目录的路径（调用方用 Qt.resolvedUrl 解析）；
+// 深色主题选 white 图标集，浅色主题选 darkgrey 图标集
+function iconPath(code, isNight, isDarkTheme) {
+    var dir = isDarkTheme ? "white" : "darkgrey";
+    return "icons/" + dir + "/" + iconBase(code, isNight) + ".png";
+}
+
+// 依主题文字色亮度判断深浅色主题（YIQ 亮度公式；textColor 为 Kirigami.Theme.textColor）
+function isDarkTheme(textColor) {
+    return (textColor.r * 0.299 + textColor.g * 0.587 + textColor.b * 0.114) < 0.5;
 }
 
 // 和风空气质量类别对应的展示色（近似国标 AQI 分级配色）

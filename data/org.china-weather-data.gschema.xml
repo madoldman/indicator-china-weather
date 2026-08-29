@@ -10,6 +10,11 @@
             <summary>thisweather</summary>
             <description>current weather of this city</description>
        </key>
+       <key name="refresh-interval" type="i">
+            <default>20</default>
+            <summary>auto refresh interval in minutes</summary>
+            <description>auto refresh interval in minutes, synced with menu setting</description>
+       </key>
        <key name="thememode" type="s">
            <default>"auto"</default>
            <summary>"record theme mode"</summary>

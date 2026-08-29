@@ -59,6 +59,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
     m_menu = new menuModule(this);
     connect(m_menu,&menuModule::menuModuleClose,this,&MainWindow::closeActivated);
+    connect(m_menu, &menuModule::refreshIntervalChanged, this, &MainWindow::onRefreshIntervalChanged);
     m_menu->addCityAction->setText(tr("Add City"));
     connect(m_menu->addCityAction, &AddCityAction::requestSetCityName, this, [=] (QString cityName) {
         cityLabel->setText(cityName);//一会设置个label用于显示地名
@@ -141,7 +142,28 @@ MainWindow::MainWindow(QWidget *parent) :
     m_refreshweather = new QTimer(this); //定时更新主界面天气
     m_refreshweather->setTimerType(Qt::PreciseTimer);
     QObject::connect(m_refreshweather, SIGNAL(timeout()), this, SLOT(onRefreshMainWindowWeather()));
-    m_refreshweather->start((20*60)*1000); //set time interval to refresh weather
+    // 刷新间隔取 gsettings refresh-interval（菜单「刷新间隔」可改，改后经信号实时生效）
+    int intervalMinutes = 20;
+    if (QGSettings::isSchemaInstalled(APPDATA)) {
+        QGSettings setting(APPDATA);
+        intervalMinutes = setting.get("refresh-interval").toInt();
+        if (intervalMinutes <= 0) intervalMinutes = 20;
+    }
+    m_refreshweather->start(intervalMinutes * 60 * 1000);
+    // 小部件配置页修改刷新间隔（写 gsettings）也实时同步本应用定时器
+    if (QGSettings::isSchemaInstalled(APPDATA)) {
+        auto *setting = new QGSettings(QByteArray(APPDATA), QByteArray(), this);
+        connect(setting, &QGSettings::changed, this, [this](const QString &key) {
+            if (key != QLatin1String("refresh-interval") || !m_refreshweather) {
+                return;
+            }
+            QGSettings s(APPDATA);
+            const int v = s.get("refresh-interval").toInt();
+            if (v > 0) {
+                m_refreshweather->start(v * 60 * 1000);
+            }
+        });
+    }
     initGsetting();//初始化Gsetting
 }
 
@@ -997,4 +1019,12 @@ QString MainWindow::getCityList()
 void MainWindow::setCityList(QString str)
 {
     m_pWeatherData->set("citylist", str);
+}
+
+//菜单「刷新间隔」变更：重启自动刷新定时器
+void MainWindow::onRefreshIntervalChanged(int minutes)
+{
+    if (m_refreshweather && minutes > 0) {
+        m_refreshweather->start(minutes * 60 * 1000);
+    }
 }
