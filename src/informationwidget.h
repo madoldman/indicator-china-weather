@@ -48,6 +48,7 @@ public slots:
     //set lifestyle index in mainwindow
     void onSetLifeStyle(LifeStyle lifestyle);
     void setForecastIcon(QLabel *label, const QString &picStr); // 缩放设置 7 天预报图标
+    void setIndexIcon(QLabel *label, const QString &picStr, const QString &bgColor); // 设置生活指数图标（彩色圆底+图标）
 
 private:
     int m_day = 1;

@@ -169,7 +169,7 @@ void Information::initControlQss()
     ui->lb_drsg_brf->setStyleSheet(lbIndexBrfQss);
     ui->lb_uv_brf->move(96,316);
     ui->lb_drsg_icon->setStyleSheet(lbIndexIconQss);
-    ui->lb_drsg_icon->setStyleSheet("QLabel{background-image:url(:/res/control_icons/index_clothe.png);}");
+    setIndexIcon(ui->lb_drsg_icon, ":/res/control_icons/index_clothe.png", "rgba(190,180,230,0.5)"); // 薰衣草紫
     ui->lb_drsg->setText("穿衣指数");
 
     //感冒指数
@@ -177,7 +177,7 @@ void Information::initControlQss()
     ui->lb_flu_brf->setStyleSheet(lbIndexBrfQss);
     ui->lb_uv_brf->move(299,316);
     ui->lb_flu_icon->setStyleSheet(lbIndexIconQss);
-    ui->lb_flu_icon->setStyleSheet("QLabel{background-image:url(:/res/control_icons/index_flu.png);}");
+    setIndexIcon(ui->lb_flu_icon, ":/res/control_icons/index_flu.png", "rgba(180,210,225,0.5)"); // 雾蓝
     ui->lb_flu->setText("感冒指数");
 
     //紫外线指数
@@ -185,7 +185,7 @@ void Information::initControlQss()
     ui->lb_uv_brf->setStyleSheet(lbIndexBrfQss);
     ui->lb_uv_brf->move(504,316);
     ui->lb_uv_icon->setStyleSheet(lbIndexIconQss);
-    ui->lb_uv_icon->setStyleSheet("QLabel{background-image:url(:/res/control_icons/index_uv.png);}");
+    setIndexIcon(ui->lb_uv_icon, ":/res/control_icons/index_uv.png", "rgba(235,225,185,0.5)"); // 柔和米黄
     ui->lb_uv->setText("紫外线指数");
 
     //洗车指数
@@ -193,7 +193,7 @@ void Information::initControlQss()
     ui->lb_cw_brf->setStyleSheet(lbIndexBrfQss);
     ui->lb_cw_brf->move(707,316);
     ui->lb_cw_icon->setStyleSheet(lbIndexIconQss);
-    ui->lb_cw_icon->setStyleSheet("QLabel{background-image:url(:/res/control_icons/index_cash_wash.png);}");
+    setIndexIcon(ui->lb_cw_icon, ":/res/control_icons/index_cash_wash.png", "rgba(165,205,235,0.5)"); // 天蓝
     ui->lb_cw->setText("洗车指数");
 
     //空气指数
@@ -201,7 +201,7 @@ void Information::initControlQss()
     ui->lb_air_brf->setStyleSheet(lbIndexBrfQss);
     ui->lb_air_brf->move(96,395);
     ui->lb_air_icon->setStyleSheet(lbIndexIconQss);
-    ui->lb_air_icon->setStyleSheet("QLabel{background-image:url(:/res/control_icons/index_air.png);}");
+    setIndexIcon(ui->lb_air_icon, ":/res/control_icons/index_air.png", "rgba(175,215,200,0.5)"); // 薄荷绿
     ui->lb_air->setText("空气指数");
 
     //运动指数
@@ -209,7 +209,7 @@ void Information::initControlQss()
     ui->lb_sport_brf->setStyleSheet(lbIndexBrfQss);
     ui->lb_sport_brf->move(299,395);
     ui->lb_sport_icon->setStyleSheet(lbIndexIconQss);
-    ui->lb_sport_icon->setStyleSheet("QLabel{background-image:url(:/res/control_icons/index_sport.png);}");
+    setIndexIcon(ui->lb_sport_icon, ":/res/control_icons/index_sport.png", "rgba(170,220,210,0.5)"); // 淡青
     ui->lb_sport->setText("运动指数");
 
     //分割线
@@ -434,6 +434,16 @@ void Information::setForecastIcon(QLabel *label, const QString &picStr)
     label->setPixmap(pm);
     label->setAlignment(Qt::AlignCenter);
     label->setStyleSheet(QString());
+}
+
+// 生活指数图标：label 48x48，QSS 半透明彩色圆底（半径 24px，配色同小部件
+// indexBgColor 的 55% 半透明柔和色，纯色圆底过亮刺眼），白色官网图标 QPixmap
+// 原生尺寸居中显示在圆底上（此前 32x32 label 配 background-image 不缩放会裁切）
+void Information::setIndexIcon(QLabel *label, const QString &picStr, const QString &bgColor)
+{
+    label->setPixmap(QPixmap(picStr));
+    label->setAlignment(Qt::AlignCenter);
+    label->setStyleSheet("QLabel{border:none;background-color:" + bgColor + ";border-radius:24px;}");
 }
 
 QString Information::convertCodeToBackgroud(int code)
