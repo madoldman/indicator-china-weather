@@ -18,7 +18,7 @@ The weather data are from the QWeather (和风天气) API v7 (requires your own 
 
 + 实时空气质量：`https://devapi.qweather.com/v7/air/now?location=101250101&lang=zh`
 
-+ 生活指数（1运动 2洗车 3穿衣 5紫外线 9感冒 10空气污染扩散）：`https://devapi.qweather.com/v7/indices/1d?location=101250101&type=1,2,3,5,9,10&lang=zh`
++ 生活指数（type=0 全部 16 类：1运动 2洗车 3穿衣 4钓鱼 5紫外线 6旅游 7花粉过敏 8舒适度 9感冒 10空气污染扩散 11空调 12太阳镜 13化妆 14晾晒 15交通 16防晒）：`https://devapi.qweather.com/v7/indices/1d?location=101250101&type=0&lang=zh`
 
 + 城市信息查询：`https://geoapi.qweather.com/v2/city/lookup?location=changsha&lang=zh`
 
@@ -101,7 +101,7 @@ export QWEATHER_CREDENTIAL_ID="你的凭据ID"
 2. 搜索「天气」（或 `chinaweather`）
 3. 将「天气」小部件拖到面板任意位置
 
-小部件在面板上显示「天气图标 + 当前温度」，图标随当前天气实时变化（和风 100-999 天气代码，夜间自动切换夜间图标）。点击后面板会在小部件所在位置弹出完整天气面板（由 Plasma 原生锚定弹出，包含城市名、实况天气、7 天预报、空气质量 AQI 与 6 项生活指数），再次点击或点击面板外空白处收起。
+小部件在面板上显示「天气图标 + 当前温度」，图标随当前天气实时变化（和风 100-999 天气代码，夜间自动切换夜间图标）。点击后面板会在小部件所在位置弹出完整天气面板（由 Plasma 原生锚定弹出，包含城市名、实况天气、7 天预报、空气质量 AQI 与 16 项生活指数），再次点击或点击面板外空白处收起。
 
 ### 右键菜单
 

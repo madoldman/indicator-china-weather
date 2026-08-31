@@ -126,16 +126,32 @@ struct ForecastWeather
 
 struct LifeStyle
 {
+    QString ac_brf;
+    QString ac_txt;
     QString air_brf;
     QString air_txt;
+    QString allergy_brf;
+    QString allergy_txt;
     QString comf_brf;
     QString comf_txt;
     QString cw_brf;
     QString cw_txt;
+    QString dc_brf;
+    QString dc_txt;
     QString drsg_brf;
     QString drsg_txt;
+    QString fishing_brf;
+    QString fishing_txt;
     QString flu_brf;
     QString flu_txt;
+    QString gl_brf;
+    QString gl_txt;
+    QString mu_brf;
+    QString mu_txt;
+    QString ptfc_brf;
+    QString ptfc_txt;
+    QString spi_brf;
+    QString spi_txt;
     QString sport_brf;
     QString sport_txt;
     QString trav_brf;

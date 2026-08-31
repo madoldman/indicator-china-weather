@@ -408,14 +408,15 @@ void WeatherClient::fetchAll(const QString &locationId)
     m_loading = true;
     emit loadingChanged();
 
-    // 生活指数：1运动 2洗车 3穿衣 5紫外线 9感冒 10空气污染扩散
+    // 生活指数：type=0 请求全部 16 类（1运动 2洗车 3穿衣 4钓鱼 5紫外线 6旅游 7花粉过敏
+    // 8舒适度 9感冒 10空气污染扩散 11空调 12太阳镜 13化妆 14晾晒 15交通 16防晒）
     fetch(QStringLiteral("/v7/weather/now"), QString(),
           [this](const QJsonObject &root) { parseNow(root); });
     fetch(QStringLiteral("/v7/weather/7d"), QString(),
           [this](const QJsonObject &root) { parseDaily(root); });
     fetch(QStringLiteral("/v7/air/now"), QString(),
           [this](const QJsonObject &root) { parseAir(root); });
-    fetch(QStringLiteral("/v7/indices/1d"), QStringLiteral("1,2,3,5,9,10"),
+    fetch(QStringLiteral("/v7/indices/1d"), QStringLiteral("0"),
           [this](const QJsonObject &root) { parseIndices(root); });
 }
 
@@ -723,13 +724,19 @@ void WeatherClient::parseIndices(const QJsonObject &root)
 {
     const QJsonArray daily = root.value(QStringLiteral("daily")).toArray();
 
-    // 生活指数固定展示顺序：穿衣(3) 洗车(2) 感冒(9) 紫外线(5) 空气污染扩散(10) 运动(1)
+    // 生活指数固定展示顺序：穿衣(3) 洗车(2) 感冒(9) 紫外线(5) 空气指数(10) 运动(1)
+    // + 钓鱼(4) 旅游(6) 花粉过敏(7) 舒适度(8) 空调(11) 太阳镜(12) 化妆(13) 晾晒(14)
+    // 交通(15) 防晒(16)，共 16 类全覆盖（前 6 项保持既有视觉顺序）
     static const struct {
         const char *type;
         const char *name;
     } kIndexOrder[] = {
         {"3", "穿衣指数"}, {"2", "洗车指数"}, {"9", "感冒指数"},
-        {"5", "紫外线指数"}, {"10", "空气污染扩散条件"}, {"1", "运动指数"},
+        {"5", "紫外线指数"}, {"10", "空气指数"}, {"1", "运动指数"},
+        {"4", "钓鱼指数"}, {"6", "旅游指数"}, {"7", "花粉过敏指数"},
+        {"8", "舒适度指数"}, {"11", "空调开启指数"}, {"12", "太阳镜指数"},
+        {"13", "化妆指数"}, {"14", "晾晒指数"}, {"15", "交通指数"},
+        {"16", "防晒指数"},
     };
 
     QHash<QString, QJsonObject> byType;
@@ -742,6 +749,8 @@ void WeatherClient::parseIndices(const QJsonObject &root)
     for (const auto &entry : kIndexOrder) {
         const QJsonObject item = byType.value(QString::fromLatin1(entry.type));
         QVariantMap mapped;
+        mapped.insert(QStringLiteral("type"),
+                      item.value(QStringLiteral("type")).toString().toInt()); // 整数 type，供 QML 数值比较
         mapped.insert(QStringLiteral("name"), QString::fromUtf8(entry.name));
         mapped.insert(QStringLiteral("category"), item.value(QStringLiteral("category")).toString());
         mapped.insert(QStringLiteral("text"), item.value(QStringLiteral("text")).toString());

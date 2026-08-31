@@ -94,7 +94,7 @@ class WeatherClient : public QObject
     Q_PROPERTY(QString airAqi READ airAqi NOTIFY airChanged)
     Q_PROPERTY(QString airCategory READ airCategory NOTIFY airChanged)
 
-    // 生活指数（/v7/indices/1d，type=1,2,3,5,9,10），元素为 QVariantMap
+    // 生活指数（/v7/indices/1d，type=0 全部 16 类），元素为 QVariantMap（含 type/name/category/text）
     Q_PROPERTY(QVariantList indices READ indices NOTIFY indicesChanged)
 
 public:

@@ -212,6 +212,76 @@ void Information::initControlQss()
     setIndexIcon(ui->lb_sport_icon, ":/res/control_icons/index_sport.png", "rgba(170,220,210,0.5)"); // 淡青
     ui->lb_sport->setText("运动指数");
 
+    //钓鱼指数
+    ui->lb_fishing->setStyleSheet(lbIndexQss);
+    ui->lb_fishing_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_fishing_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_fishing_icon, ":/res/control_icons/index_fishing.png", "rgba(150,215,230,0.5)"); // 淡湖青
+    ui->lb_fishing->setText("钓鱼指数");
+
+    //旅游指数
+    ui->lb_trav->setStyleSheet(lbIndexQss);
+    ui->lb_trav_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_trav_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_trav_icon, ":/res/control_icons/index_trav.png", "rgba(175,185,235,0.5)"); // 蓝紫
+    ui->lb_trav->setText("旅游指数");
+
+    //花粉过敏指数
+    ui->lb_allergy->setStyleSheet(lbIndexQss);
+    ui->lb_allergy_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_allergy_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_allergy_icon, ":/res/control_icons/index_allergy.png", "rgba(240,195,215,0.5)"); // 淡粉
+    ui->lb_allergy->setText("花粉过敏指数");
+
+    //舒适度指数
+    ui->lb_comf->setStyleSheet(lbIndexQss);
+    ui->lb_comf_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_comf_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_comf_icon, ":/res/control_icons/index_comf.png", "rgba(230,220,195,0.5)"); // 淡米
+    ui->lb_comf->setText("舒适度指数");
+
+    //空调开启指数
+    ui->lb_ac->setStyleSheet(lbIndexQss);
+    ui->lb_ac_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_ac_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_ac_icon, ":/res/control_icons/index_ac.png", "rgba(170,210,240,0.5)"); // 淡蓝
+    ui->lb_ac->setText("空调开启指数");
+
+    //太阳镜指数
+    ui->lb_gl->setStyleSheet(lbIndexQss);
+    ui->lb_gl_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_gl_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_gl_icon, ":/res/control_icons/index_gl.png", "rgba(240,225,170,0.5)"); // 淡黄
+    ui->lb_gl->setText("太阳镜指数");
+
+    //化妆指数
+    ui->lb_mu->setStyleSheet(lbIndexQss);
+    ui->lb_mu_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_mu_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_mu_icon, ":/res/control_icons/index_mu.png", "rgba(245,205,215,0.5)"); // 淡粉红
+    ui->lb_mu->setText("化妆指数");
+
+    //晾晒指数
+    ui->lb_dc->setStyleSheet(lbIndexQss);
+    ui->lb_dc_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_dc_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_dc_icon, ":/res/control_icons/index_dc.png", "rgba(185,225,175,0.5)"); // 淡绿
+    ui->lb_dc->setText("晾晒指数");
+
+    //交通指数
+    ui->lb_ptfc->setStyleSheet(lbIndexQss);
+    ui->lb_ptfc_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_ptfc_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_ptfc_icon, ":/res/control_icons/index_ptfc.png", "rgba(245,205,170,0.5)"); // 浅橙
+    ui->lb_ptfc->setText("交通指数");
+
+    //防晒指数
+    ui->lb_spi->setStyleSheet(lbIndexQss);
+    ui->lb_spi_brf->setStyleSheet(lbIndexBrfQss);
+    ui->lb_spi_icon->setStyleSheet(lbIndexIconQss);
+    setIndexIcon(ui->lb_spi_icon, ":/res/control_icons/index_spi.png", "rgba(245,230,160,0.5)"); // 浅黄
+    ui->lb_spi->setText("防晒指数");
+
     //分割线
     ui->lineH->setStyleSheet(lineQss);
     ui->lineV_1->setStyleSheet(lineQss);
@@ -421,6 +491,26 @@ void Information::onSetLifeStyle(LifeStyle lifestyle)
     ui->lb_air_brf->setText(lifestyle.air_brf); //空气指数
 
     ui->lb_sport_brf->setText(lifestyle.sport_brf); //运动指数
+
+    ui->lb_fishing_brf->setText(lifestyle.fishing_brf); //钓鱼指数
+
+    ui->lb_trav_brf->setText(lifestyle.trav_brf); //旅游指数
+
+    ui->lb_allergy_brf->setText(lifestyle.allergy_brf); //花粉过敏指数
+
+    ui->lb_comf_brf->setText(lifestyle.comf_brf); //舒适度指数
+
+    ui->lb_ac_brf->setText(lifestyle.ac_brf); //空调开启指数
+
+    ui->lb_gl_brf->setText(lifestyle.gl_brf); //太阳镜指数
+
+    ui->lb_mu_brf->setText(lifestyle.mu_brf); //化妆指数
+
+    ui->lb_dc_brf->setText(lifestyle.dc_brf); //晾晒指数
+
+    ui->lb_ptfc_brf->setText(lifestyle.ptfc_brf); //交通指数
+
+    ui->lb_spi_brf->setText(lifestyle.spi_brf); //防晒指数
 }
 
 // 7 天预报图标：QLabel 的 background-image 不缩放（100x100 图标只显示中间一小块），

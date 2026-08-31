@@ -207,8 +207,9 @@ void WeatherWorker::onWeatherDataRequest(const QString &cityId)
              [=](const QJsonObject &root, int) { parseForecastReply(root); });
     fetchApi(buildApiUrl(QWeather::DEVAPI_HOST, QStringLiteral("/v7/air/now"), cityId),
              [=](const QJsonObject &root, int) { parseAirReply(root); });
-    //生活指数：1运动 2洗车 3穿衣 5紫外线 9感冒 10空气污染扩散
-    fetchApi(buildApiUrl(QWeather::DEVAPI_HOST, QStringLiteral("/v7/indices/1d"), cityId, QStringLiteral("1,2,3,5,9,10")),
+    //生活指数：type=0 请求全部 16 类（1运动 2洗车 3穿衣 4钓鱼 5紫外线 6旅游 7花粉过敏 8舒适度
+    //9感冒 10空气污染扩散 11空调 12太阳镜 13化妆 14晾晒 15交通 16防晒）
+    fetchApi(buildApiUrl(QWeather::DEVAPI_HOST, QStringLiteral("/v7/indices/1d"), cityId, QStringLiteral("0")),
              [=](const QJsonObject &root, int) { parseIndicesReply(root); });
 }
 
@@ -373,7 +374,7 @@ void WeatherWorker::parseAirReply(const QJsonObject &root)
     }
 }
 
-//处理生活指数 v7 响应（/v7/indices/1d），填充与旧 s6 语义一致的生活指数
+//处理生活指数 v7 响应（/v7/indices/1d，type=0 全部 16 类），填充全部生活指数
 void WeatherWorker::parseIndicesReply(const QJsonObject &root)
 {
     if (!isV7Success(root)) {
@@ -409,6 +410,46 @@ void WeatherWorker::parseIndicesReply(const QJsonObject &root)
         else if (type == "1") {//运动指数
             m_lifestyle.sport_brf = brf;
             m_lifestyle.sport_txt = txt;
+        }
+        else if (type == "4") {//钓鱼指数
+            m_lifestyle.fishing_brf = brf;
+            m_lifestyle.fishing_txt = txt;
+        }
+        else if (type == "6") {//旅游指数
+            m_lifestyle.trav_brf = brf;
+            m_lifestyle.trav_txt = txt;
+        }
+        else if (type == "7") {//花粉过敏指数
+            m_lifestyle.allergy_brf = brf;
+            m_lifestyle.allergy_txt = txt;
+        }
+        else if (type == "8") {//舒适度指数
+            m_lifestyle.comf_brf = brf;
+            m_lifestyle.comf_txt = txt;
+        }
+        else if (type == "11") {//空调开启指数
+            m_lifestyle.ac_brf = brf;
+            m_lifestyle.ac_txt = txt;
+        }
+        else if (type == "12") {//太阳镜指数
+            m_lifestyle.gl_brf = brf;
+            m_lifestyle.gl_txt = txt;
+        }
+        else if (type == "13") {//化妆指数
+            m_lifestyle.mu_brf = brf;
+            m_lifestyle.mu_txt = txt;
+        }
+        else if (type == "14") {//晾晒指数
+            m_lifestyle.dc_brf = brf;
+            m_lifestyle.dc_txt = txt;
+        }
+        else if (type == "15") {//交通指数
+            m_lifestyle.ptfc_brf = brf;
+            m_lifestyle.ptfc_txt = txt;
+        }
+        else if (type == "16") {//防晒指数
+            m_lifestyle.spi_brf = brf;
+            m_lifestyle.spi_txt = txt;
         }
     }
     emit this->requestSetLifeStyle(m_lifestyle);

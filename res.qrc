@@ -292,6 +292,16 @@
         <file>res/control_icons/index_flu.png</file>
         <file>res/control_icons/index_sport.png</file>
         <file>res/control_icons/index_uv.png</file>
+        <file>res/control_icons/index_fishing.png</file>
+        <file>res/control_icons/index_trav.png</file>
+        <file>res/control_icons/index_allergy.png</file>
+        <file>res/control_icons/index_comf.png</file>
+        <file>res/control_icons/index_ac.png</file>
+        <file>res/control_icons/index_gl.png</file>
+        <file>res/control_icons/index_mu.png</file>
+        <file>res/control_icons/index_dc.png</file>
+        <file>res/control_icons/index_ptfc.png</file>
+        <file>res/control_icons/index_spi.png</file>
         <file>res/control_icons/close_white.png</file>
         <file>res/control_icons/close_black.png</file>
         <file>res/control_icons/logo.png</file>

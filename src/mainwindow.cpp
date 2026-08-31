@@ -44,7 +44,7 @@ MainWindow::MainWindow(QWidget *parent) :
     qRegisterMetaType<LifeStyle>();
 
     //设置主界面样式
-    this->setFixedSize(865,768);
+    this->setFixedSize(865,910);
     this->setFocusPolicy(Qt::ClickFocus);//this->setFocusPolicy(Qt::NoFocus);//设置焦点类型
     this->setWindowTitle(tr("Weather"));
     this->setAttribute(Qt::WA_TranslucentBackground);//设置窗口背景透明
@@ -252,7 +252,7 @@ void MainWindow::initControlQss()
 //    ui->centralwidget->setStyleSheet("#centralwidget{border:1px solid rgba(38,38,38,0.15);border-radius:6px;background:rgba(19,19,20,0);}");
     ui->centralwidget->setStyleSheet("#centralwidget{color:white;background-image:url(':/res/background/weather-clear.png');background-repeat:no-repeat;}");
     ui->centralwidget->move(0,0);
-    ui->centralwidget->setFixedSize(865,768);
+    ui->centralwidget->setFixedSize(865,910);
     ui->btnMinimize->setIcon(QIcon::fromTheme(":/res/control_icons/dark-window-min.svg"));
     ui->btnMinimize->setFixedSize(30,30);
     ui->btnMinimize->setToolTip(tr("minimize"));
@@ -281,7 +281,7 @@ void MainWindow::initControlQss()
 
     m_scrollarea = new QScrollArea(ui->centralwidget);
     m_scrollarea->setFocusPolicy(Qt::NoFocus);//设置焦点类型
-    m_scrollarea->setFixedSize(858, 460); // 内容（450）一屏完整显示，无需滚动
+    m_scrollarea->setFixedSize(858, 605); // 内容高约 600（16 项生活指数），含边距 605 一屏完整显示
     m_scrollarea->move(4, 290);
     m_scrollarea->setStyleSheet("QScrollArea{border:none;border-radius:4px;background:transparent;color:rgba(255,255,255,1);}");
 
@@ -302,7 +302,7 @@ void MainWindow::initControlQss()
 //                                                     "QScrollBar::down-arrow:vertical{height:0px;}");
 
     m_scrollwidget = new QWidget(m_scrollarea);
-    m_scrollwidget->resize(858, 450);
+    m_scrollwidget->resize(858, 600); // 与 informationwidget.ui 高度一致，16 项生活指数内容高约 587，600 一屏容纳
     m_scrollwidget->setStyleSheet("QWidget{border:none;border-radius:4px;background:transparent;color:rgba(255,255,255,1);}");
 //    m_scrollwidget->setStyleSheet("QWidget{border:2px;border-radius:4px;background:transparent;color:rgba(255,255,255,1);}");
     m_scrollarea->setWidget(m_scrollwidget);
