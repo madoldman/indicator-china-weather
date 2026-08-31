@@ -109,6 +109,14 @@ void WeatherManager::startAutoLocationTask()
     emit m_geoipWorker->requestStartWork();
 }
 
+//批量拉取城市列表天气简报：复用收藏城市简报管线（requestShowCollCityWeather已连至
+//WeatherWorker::onCityWeatherDataRequest，逐城请求/v7/weather/now后以
+//"tmp=...,cond_txt=...,cond_code=...,id=...,location=...;"记录格式经requestSetCityWeather下发）
+void WeatherManager::startCityListBrief()
+{
+    emit requestShowCollCityWeather();
+}
+
 void WeatherManager::setAutomaticCity(const QString &cityName)
 {
     bool autoSuccess = false;

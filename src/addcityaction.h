@@ -49,10 +49,14 @@ private:
     bool is_open_city_collect_widget = false;//需要
     QLabel *addCityLabel = nullptr;
     CityCollectionWidget *m_citycollectionwidget;//需要
+    ObserveWeather m_pendingCurrentCity; //主程序当前实际城市天气（收藏对话框懒创建前缓存）
     void onRequestSendDesktopNotify(QString message);
 
 private slots:
     void addCityClick();
+public slots:
+    //转发主程序当前实际城市天气到收藏对话框的「当前城市」卡片（自动定位时即自动定位城市）
+    void setCurrentCityWeather(const ObserveWeather &weather);
 signals:
 
     void noNetWork();//断网

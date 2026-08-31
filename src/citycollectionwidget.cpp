@@ -185,6 +185,14 @@ void CityCollectionWidget::noNetWork()
     checkNetWork = false;
 
 }
+
+//设置顶部「当前城市」卡片显示主程序实际当前城市（自动定位时即自动定位城市），
+//保证与主窗口当前城市一致；批量简报首条仅以 citylist[0] 为当前城市，自动定位开启时不符
+void CityCollectionWidget::setCurrentCityWeather(const ObserveWeather &weather)
+{
+    m_currentCityWeather = weather;
+}
+
 void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
 {
     if (weather_data == "")return;
@@ -222,6 +230,15 @@ void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
             observeweather.cond_code = "-";
             observeweather.id = "-";
             observeweather.city = "-";
+        }
+
+        //当前城市卡片优先使用主程序实际当前城市（自动定位时即自动定位城市）
+        if (!m_currentCityWeather.id.isEmpty()) {
+            observeweather = m_currentCityWeather;
+        }
+        //自动定位开启时标注「·自动」，与主窗口当前城市显示一致
+        if (isAutoLocateEnabled() && observeweather.city != "-" && !observeweather.city.isEmpty()) {
+            observeweather.city += tr(" · 自动");
         }
 
         QList<citycollectionitem *> cityItemList = ui->backwidget->findChildren<citycollectionitem *>();
@@ -326,7 +343,16 @@ void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
 
 
 
+            //当前城市卡片优先使用主程序实际当前城市（自动定位时即自动定位城市）
+            if (i == 0 && !m_currentCityWeather.id.isEmpty()) {
+                observeweather = m_currentCityWeather;
+            }
             if (i==0) { //current city
+                //自动定位开启时标注「·自动」，与主窗口当前城市显示一致
+                if (isAutoLocateEnabled() && !observeweather.city.isEmpty()
+                        && observeweather.city != "-") {
+                    observeweather.city += tr(" · 自动");
+                }
                 citycollectionitem *m_currentcity = new citycollectionitem(ui->backwidget);
 //                m_currentcity = new citycollectionitem(ui->backwidget);
                 m_currentcity->move(35, 81);
@@ -700,4 +726,12 @@ QString CityCollectionWidget::getCityList()
 void CityCollectionWidget::setCityList(QString str)
 {
     m_pWeatherData->set("citylist", str);
+}
+
+bool CityCollectionWidget::isAutoLocateEnabled()
+{
+    if (m_pWeatherData == nullptr || !m_pWeatherData->keys().contains("autolocate")) {
+        return true;
+    }
+    return m_pWeatherData->get("autolocate").toBool();
 }

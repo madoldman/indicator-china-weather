@@ -27,6 +27,7 @@
 #include <QObject>
 #include <QWidget>
 #include <QMenu>
+#include <QAction>
 #include <QPushButton>
 #include <QToolButton>
 #include <QDebug>
@@ -60,8 +61,10 @@ signals:
     void menuModuleClose();
     void menuModuleSetThemeStyle(QString);
     void refreshIntervalChanged(int minutes);
+    void autoLocateToggled(bool on); //「自动定位」菜单项开关切换
 public:
     QPushButton *menuButton = nullptr;
+    QAction *autoLocateAction = nullptr; //「自动定位」可勾选菜单项
 
 public:
     QString appName = "appName字段未填充!"; //格式kylin-usb-creator
@@ -103,6 +106,7 @@ private:
     void triggerThemeMenu(QAction* act); //主题动作
     void triggerIntervalMenu(QAction* act); //刷新间隔动作
     void refreshIntervalCheckedState(); //菜单打开时按 gsettings 回显勾选状态
+    void refreshAutoLocateCheckedState(); //菜单打开时按 gsettings autolocate 回显「自动定位」勾选
     void addPanelAction(); //把天气小部件快捷加入 Plasma 面板
     void aboutAction();
     void initAbout(); //关于窗口初始化

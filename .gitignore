@@ -30,6 +30,10 @@ ui_*.h
 *.jsc
 Makefile*
 *build-*
+/build/
+
+# ZCode agent session working dir
+/.zcode/
 
 # Qt unit tests
 target_wrapper.*

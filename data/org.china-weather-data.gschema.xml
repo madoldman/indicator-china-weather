@@ -3,7 +3,12 @@
         <key name="citylist" type="s">
             <default>"101010100,"</default>
             <summary>citylist</summary>
-            <description>citylist</description>
+            <description>citylist: comma-separated manual city LocationIDs; index 0 is the last active manual city</description>
+       </key>
+       <key name="autolocate" type="b">
+            <default>true</default>
+            <summary>auto locate mode</summary>
+            <description>when true the current city is resolved by public IP; when false the current city is citylist[0]. shared by app and plasmoid</description>
        </key>
        <key name="weather" type="s">
             <default>"1920-08-27 10:17:42,101010100,海淀,小雨,95%,25℃,北风,1级,北京,305"</default>

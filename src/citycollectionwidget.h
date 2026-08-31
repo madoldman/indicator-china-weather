@@ -71,6 +71,10 @@ public slots:
     //slot function to set weather data
     void onRequestSetCityWeather(QString weather_data);
 
+    //设置顶部「当前城市」卡片天气（来自主程序实际当前城市，自动定位时即自动定位城市，
+    //与主窗口一致，覆盖批量简报首条仅以 citylist[0] 为当前城市的旧逻辑）
+    void setCurrentCityWeather(const ObserveWeather &weather);
+
     void updatecity();
     void noNetWork();
 //    bool checkNetForWid = true;
@@ -115,11 +119,13 @@ private:
     int m_citynumber; //number of current collection cities
     bool isAddCity = false; //whether add a new collect city
     bool is_open_city_collect_widget = false;
+    ObserveWeather m_currentCityWeather; //主程序当前实际城市天气（自动定位时即自动定位城市）
 
     // getstting初始化、值获取、 设置getsetting值
     void initGsetting();
     QString getCityList();
     void setCityList(QString str);
+    bool isAutoLocateEnabled(); //自动定位是否开启（旧schema缺autolocate键时默认true）
     void setThemeStyle();
     QGSettings  *m_pWeatherData= nullptr;
     QGSettings *m_pThemeStyle = nullptr;

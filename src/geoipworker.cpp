@@ -43,7 +43,6 @@ GEOIP_API unsigned long _GeoIP_lookupaddress(const char *host); //_GeoIP_lookupa
 namespace {
 
 const char UbuntuUrl[] = "http://geoip.ubuntu.com/lookup";
-const char PconlineUrl[] = "http://whois.pconline.com.cn/";
 
 const void getIpAndCityByUbuntu(const QString &url, QString &ip, QString &city)
 {
@@ -85,106 +84,6 @@ const void getIpAndCityByUbuntu(const QString &url, QString &ip, QString &city)
             city = QString();
         }
     }
-}
-
-const QString getIpByPconline(const QString &url)
-{
-    QNetworkAccessManager *manager = new QNetworkAccessManager();
-    QNetworkReply *reply = manager->get(QNetworkRequest(QUrl(url)));
-    QEventLoop loop;
-    QObject::connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
-    //QObject::connect(manager, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
-    //QObject::connect(manager, SIGNAL(finished(QNetworkReply *)), &loop, SLOT(quit()));
-    loop.exec();
-
-    if (reply->error() == QNetworkReply::NoError) {
-        QByteArray ba = reply->readAll();
-        QString reply_content = QString::fromUtf8(ba);
-        reply->close();
-        reply->deleteLater();
-        manager->deleteLater();
-
-        if (!reply_content.isEmpty()) {
-            QString htmlStr = reply_content.replace(" ", "");
-            htmlStr = htmlStr.replace("\r", "");
-            htmlStr = htmlStr.replace("\n", "");
-            QStringList htmlList = htmlStr.split("<br/>");
-            if(htmlList.size() >= 4) {
-                QStringList ipList = htmlList.at(4).split("=");
-                if (ipList.count() > 1) {
-                    if (ipList.at(1).contains(",")) {
-                        ipList = ipList.at(1).split(",");
-                        return ipList.at(0);
-                    }
-
-                    return ipList.at(1);
-                }
-            }
-        }
-    }
-
-    return QString("0.0.0.0");
-}
-
-const QString getCityFromIpByAmap(const QString &ip)
-{
-    // https://lbs.amap.com/api/webservice/guide/api/ipconfig/
-
-    //amap json
-    //http://restapi.amap.com/v3/ip?key=44a80558982f0c3031fae15aa8711a92&ip=218.76.23.26
-
-    //amap xml
-    //https://restapi.amap.com/v3/ip?ip=218.76.23.26&output=xml&key=44a80558982f0c3031fae15aa8711a92
-
-//    QString url = QString("http://restapi.amap.com/v3/ip?key=44a80558982f0c3031fae15aa8711a92&ip=%1").arg(ip);
-    QString urlv5_1 = "http://restapi.amap.com/v5/ip?key=faf8faad4c9c070879bebe615eddeff4&type=4&ip=";
-    QString urlv5 = urlv5_1.append(ip);
-    QString url = QString(urlv5).arg(ip);
-//    qDebug()<<url;
-    QNetworkAccessManager *manager = new QNetworkAccessManager();
-    QNetworkReply *reply = manager->get(QNetworkRequest(QUrl(url)));
-    QEventLoop loop;
-    QObject::connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
-    //QObject::connect(manager, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
-    //QObject::connect(manager, SIGNAL(finished(QNetworkReply *)), &loop, SLOT(quit()));
-    loop.exec();
-
-    int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if(reply->error() != QNetworkReply::NoError || statusCode != 200) {//200 is normal status
-        reply->close();
-        reply->deleteLater();
-        manager->deleteLater();
-        return QString();
-    }
-
-    QByteArray ba = reply->readAll();
-    //QString reply_content = QString::fromUtf8(ba);
-    reply->close();
-    reply->deleteLater();
-    manager->deleteLater();
-
-    QJsonParseError err;
-    QJsonDocument jsonDocument = QJsonDocument::fromJson(ba, &err);
-    if (err.error != QJsonParseError::NoError) {// Json type error
-        return QString();
-    }
-    if (jsonDocument.isNull() || jsonDocument.isEmpty()) {
-        return QString();
-    }
-
-    QJsonObject jsonObject = jsonDocument.object();
-    if (jsonObject.isEmpty() || jsonObject.size() == 0) {
-        return QString();
-    }
-
-//    if (jsonObject.contains("city")) {
-//        return jsonObject.value("city").toString();
-//    }
-    if (jsonObject.contains("district")) {
-        return jsonObject.value("district").toString();
-    }
-
-    return QString();
 }
 
 const QString getCityFromIpByTaobao(const QString &ip)
@@ -269,64 +168,66 @@ const QString getCityFromIPAddr(const QString &ip)
 
     return QString();
 }
-const QString getCityFromIPIP(){
-//    使用ipip.net的服务进行定位
-    QNetworkAccessManager *manager = new QNetworkAccessManager();
-    QNetworkReply *reply = manager->get(QNetworkRequest(QUrl("http://myip.ipip.net")));
-    QByteArray responseData ;
+//备源：myip.ipip.net 返回纯文本（"当前 IP：x.x.x.x  来自于：中国 湖南 长沙  电信"），
+//与小部件解析一致：从「来自于」起按空白切分取省/市字段
+const QString getCityFromIPIP()
+{
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = manager.get(QNetworkRequest(QUrl("http://myip.ipip.net")));
     QEventLoop eventLoop;
-    QObject::connect(manager,&QNetworkAccessManager::finished,&eventLoop,&QEventLoop::quit);
+    QObject::connect(reply, &QNetworkReply::finished, &eventLoop, &QEventLoop::quit);
     eventLoop.exec();
-    responseData = reply->readAll();
-    QString str = responseData;
-    QStringList respList = str.split(' ');
-    if(!(respList.size() >= 5)) return  "";
-    return respList[5];
+    QString city;
+    if (reply->error() == QNetworkReply::NoError) {
+        const QString str = QString::fromUtf8(reply->readAll());
+        const int from = str.indexOf(QStringLiteral("来自于"));
+        if (from >= 0) {
+            const QStringList parts = str.mid(from + 3)
+                .split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+            // parts 形如 ["：中国","湖南","长沙","电信"]（末位可能缺运营商）
+            if (parts.size() >= 3) {
+                city = parts.at(2);
+            }
+        }
+    }
+    reply->deleteLater();
+    return city;
 }
 
 
+//主源：geoip.ubuntu.com/lookup 返回 XML（<City>Changsha</City> 等英文字段），无需凭据；
+//与面板小部件采用的链路一致。原 pconline + 高德链路已弃用：whois.pconline.com.cn
+//常被 WAF 拒绝（403）、硬编码的高德 key 每日配额易超限
+const QString getCityFromUbuntu()
+{
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = manager.get(QNetworkRequest(QUrl(UbuntuUrl)));
+    QEventLoop eventLoop;
+    QObject::connect(reply, &QNetworkReply::finished, &eventLoop, &QEventLoop::quit);
+    eventLoop.exec();
+    QString city;
+    if (reply->error() == QNetworkReply::NoError) {
+        const QString content = QString::fromUtf8(reply->readAll());
+        static const QRegularExpression cityRe(QStringLiteral("<City>([^<]+)</City>"));
+        const auto match = cityRe.match(content);
+        if (match.hasMatch()) {
+            city = match.captured(1).trimmed();
+        }
+    }
+    reply->deleteLater();
+    return city;
+}
+
+//IP 自动定位：主源 geoip.ubuntu.com（英文城市名，WeatherManager::setAutomaticCity
+//按 city_en 匹配），失败/Unknown 时回退 myip.ipip.net（中文城市名，按 city_CN 匹配）
 const QString automaicCity()
 {
-    qDebug()<<"开始自动定位";
-//    generated by Xiaoshuo Shi,account:sxshodor@163.com
-//    QString key = "e29171a071c8ac731417c2c1717041d3";
-    QString key = "faf8faad4c9c070879bebe615eddeff4";
-
-//    高德api定位逻辑
-    QNetworkAccessManager *manager = new QNetworkAccessManager();
-//    http://restapi.amap.com/v5/ip?key=faf8faad4c9c070879bebe615eddeff4&type=4&ip=123.150.8.42    123.113.71.13
-//    QNetworkReply *reply = manager->get(QNetworkRequest(QUrl("https://restapi.amap.com/v3/ip?key=" + key) ));
-//    QNetworkReply *reply = manager->get(QNetworkRequest(QUrl("http://restapi.amap.com/v5/ip?key=faf8faad4c9c070879bebe615eddeff4&type=4&ip=123.150.8.42")));
-    QString ip_str = getIpByPconline(PconlineUrl);
-    QString str = "http://restapi.amap.com/v5/ip?key=faf8faad4c9c070879bebe615eddeff4&type=4&ip=";
-    QString url_str = str.append(ip_str);
-    QNetworkReply *reply = manager->get(QNetworkRequest(QUrl(url_str)));
-
-    QString responeData;
-    QEventLoop eventLoop;
-    QObject::connect(manager,&QNetworkAccessManager::finished,&eventLoop,&QEventLoop::quit);
-    eventLoop.exec();
-    if(reply == nullptr){
-        return getCityFromIPIP();
+    qDebug() << "开始自动定位";
+    QString city = getCityFromUbuntu();
+    if (city.isEmpty() || city.compare("Unknown", Qt::CaseInsensitive) == 0) {
+        city = getCityFromIPIP();
     }
-    responeData = reply->readAll();
-    QJsonParseError parseJsonError;
-    QJsonDocument jsonDocument = QJsonDocument::fromJson(responeData.toUtf8(),&parseJsonError);
-//    if(parseJsonError.error == QJsonParseError::NoError){
-    if(parseJsonError.error != QJsonParseError::NoError){
-//        parse error and exit
-        return getCityFromIPIP();
-    }
-    QJsonObject jsonObject = jsonDocument.object();
-//    qDebug()<<jsonObject;
-    if(jsonObject["status"].toString() == "1" && jsonObject["status"].toString() != ""){
-//        return jsonObject["city"].toString();
-        return jsonObject["district"].toString();
-    }else{
-        return getCityFromIPIP();
-
-}
-
+    return city;
 }
 } // namespace
 

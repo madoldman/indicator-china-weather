@@ -1,8 +1,14 @@
 /*
- * 配置页：城市选择（本地 china-city-list.csv 搜索，不发网络请求）+ 刷新间隔。
+ * 配置页：多城市管理 + 城市搜索添加 + 刷新间隔。
  *
- * cfg_cityId / cfg_cityName / cfg_refreshInterval 为 kcfg 注入属性
- * （对应 contents/config/main.xml），修改后点击配置对话框的「确定/应用」保存。
+ * 城市列表与自动定位状态的单一数据源为共享 gsettings
+ * （org.china-weather-data.settings 的 citylist/autolocate，与应用侧同一份），
+ * 经 managerClient 提供的 Q_INVOKABLE（setAutoLocate/addCity/removeCity）读写，
+ * 修改即时生效并同步到应用与小部件。配置对话框是独立引擎，无法经 root 访问
+ * 主界面的客户端实例，故各建一个 WeatherClient。
+ *
+ * cfg_cityId/cfg_cityName 为旧版 kcfg 单城市配置，已废弃（C++ 侧一次性迁移
+ * 到共享 gsettings）；此处仅保留声明以消除 plasmashell 属性注入告警。
  */
 
 import QtQuick
@@ -16,6 +22,7 @@ import org.madoldman.chinaweather
 ColumnLayout {
     id: configPage
 
+    // 已废弃的旧 kcfg 单城市配置（不再读写）
     property string cfg_cityId
     property string cfg_cityName
 
@@ -33,29 +40,97 @@ ColumnLayout {
         id: citySearchClient
     }
 
-    // 当前模式提示：自动定位（cityId 为空）或已固定城市
-    PlasmaComponents3.Label {
-        Layout.fillWidth: true
-        wrapMode: Text.WordWrap
-        text: cfg_cityId.length > 0
-              ? i18n("当前城市：%1（%2）", cfg_cityName, cfg_cityId)
-              : i18n("当前模式：自动定位（按公网 IP 解析所在城市，每次启动重新解析）")
-        color: cfg_cityId.length > 0 ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
-        font.bold: true
+    // 多城市管理客户端：读 cityTabs/activeCityIndex 展示当前状态，
+    // 经 setAutoLocate/addCity/removeCity 写共享 gsettings
+    WeatherClient {
+        id: managerClient
     }
 
-    PlasmaComponents3.Button {
-        Layout.alignment: Qt.AlignLeft
-        visible: cfg_cityId.length > 0
-        icon.name: "gps"
-        text: i18n("恢复自动定位")
+    // 手动城市列表（cityTabs 去掉页 0 的自动定位项；
+    // tabIndex 为该城市在完整页签中的下标，删除时定位用）
+    readonly property var manualCityTabs: {
+        var tabs = []
+        var all = managerClient.cityTabs
+        for (var i = 0; i < all.length; ++i) {
+            if (!all[i].isAuto) {
+                tabs.push({ name: all[i].name, id: all[i].id, tabIndex: i })
+            }
+        }
+        return tabs
+    }
 
-        onClicked: {
-            configPage.cfg_cityId = ""
-            configPage.cfg_cityName = ""
+    // ---- 自动定位 ----
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Kirigami.Units.smallSpacing
+
+        PlasmaComponents3.Label {
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: {
+                var tabs = managerClient.cityTabs
+                var idx = managerClient.activeCityIndex
+                var tab = (idx >= 0 && idx < tabs.length) ? tabs[idx] : null
+                if (!tab || tab.isAuto) {
+                    return i18n("当前模式：自动定位（按公网 IP 解析所在城市，每次启动重新解析）")
+                }
+                return i18n("当前城市：%1（%2）", tab.name, tab.id)
+            }
+            color: managerClient.autoMode ? Kirigami.Theme.disabledTextColor
+                                          : Kirigami.Theme.textColor
+            font.bold: true
+        }
+
+        PlasmaComponents3.Button {
+            icon.name: "gps"
+            text: i18n("自动定位")
+            onClicked: managerClient.setAutoLocate(true)
         }
     }
 
+    // ---- 已存城市 ----
+    PlasmaComponents3.Label {
+        text: i18n("已存城市：")
+        color: Kirigami.Theme.textColor
+    }
+
+    PlasmaComponents3.ScrollView {
+        Layout.fillWidth: true
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 8
+
+        ListView {
+            id: savedCityView
+            clip: true
+            model: configPage.manualCityTabs
+
+            delegate: RowLayout {
+                width: ListView.view.width
+                spacing: Kirigami.Units.smallSpacing
+
+                PlasmaComponents3.Label {
+                    Layout.fillWidth: true
+                    text: (modelData.name ?? "") + "（" + (modelData.id ?? "") + "）"
+                    color: Kirigami.Theme.textColor
+                    elide: Text.ElideRight
+                }
+
+                PlasmaComponents3.Button {
+                    icon.name: "edit-delete"
+                    text: i18n("删除")
+                    onClicked: managerClient.removeCity(modelData.tabIndex)
+                }
+            }
+
+            PlasmaComponents3.Label {
+                anchors.centerIn: parent
+                visible: savedCityView.count === 0
+                text: i18n("暂无已存城市，可在下方搜索添加")
+                color: Kirigami.Theme.disabledTextColor
+            }
+        }
+    }
+
+    // ---- 添加城市 ----
     PlasmaComponents3.TextField {
         id: searchField
         Layout.fillWidth: true
@@ -65,22 +140,19 @@ ColumnLayout {
 
     PlasmaComponents3.ScrollView {
         Layout.fillWidth: true
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 14
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 12
 
         ListView {
             id: resultList
             clip: true
             model: configPage.searchResults
 
+            // 点击搜索结果即添加到共享城市列表（后端保证去重）
             delegate: PlasmaComponents3.ItemDelegate {
                 width: ListView.view.width
-                highlighted: modelData.id === configPage.cfg_cityId
                 text: modelData.name + "　" + modelData.province + "（" + modelData.id + "）"
 
-                onClicked: {
-                    configPage.cfg_cityId = modelData.id
-                    configPage.cfg_cityName = modelData.name
-                }
+                onClicked: managerClient.addCity(modelData.id, modelData.name)
             }
 
             PlasmaComponents3.Label {
@@ -119,7 +191,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: Kirigami.Theme.disabledTextColor
         font.pixelSize: Kirigami.Units.gridUnit * 0.7
-        text: i18n("间隔选择后立即生效（应用菜单与小部件自动同步）；和风天气凭据通过环境变量 QWEATHER_API_KEY 提供，配置方式见主仓库 README「和风天气凭据配置」章节。")
+        text: i18n("城市列表与自动定位状态即时保存，并与天气应用实时同步（共享 gsettings）；间隔选择后立即生效；和风天气凭据通过环境变量 QWEATHER_API_KEY 提供，配置方式见主仓库 README「和风天气凭据配置」章节。")
     }
 
     function updateResults() {

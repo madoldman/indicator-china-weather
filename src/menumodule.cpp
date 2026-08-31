@@ -65,7 +65,11 @@ void menuModule::initAction(){
     actionInterval->setText(tr("刷新间隔"));
     QAction *actionAddPanel = new QAction(m_menu);
     actionAddPanel->setText(tr("添加小部件到面板"));
-    actions<<addCityAction<<actionInterval<<actionAddPanel<<actionHelp<<actionAbout<<actionQuit;
+    //「自动定位」可勾选菜单项：读写 gsettings autolocate，切换后经信号通知主窗口
+    autoLocateAction = new QAction(m_menu);
+    autoLocateAction->setText(tr("自动定位"));
+    autoLocateAction->setCheckable(true);
+    actions<<addCityAction<<autoLocateAction<<actionInterval<<actionAddPanel<<actionHelp<<actionAbout<<actionQuit;
     m_menu->addActions(actions);
 //    互斥按钮组
     QMenu *themeMenu = new QMenu;
@@ -119,6 +123,17 @@ void menuModule::initAction(){
     connect(intervalMenu,&QMenu::triggered,this,&menuModule::triggerIntervalMenu);
     connect(m_menu,&QMenu::aboutToShow,this,&menuModule::refreshIntervalCheckedState);
     connect(actionAddPanel,&QAction::triggered,this,&menuModule::addPanelAction);
+
+    // 自动定位开关：写 gsettings autolocate 并经信号通知主窗口；
+    // 用 triggered 而非 toggled，避免 aboutToShow 回显勾选时反向触发切换
+    connect(autoLocateAction, &QAction::triggered, this, [this] () {
+        const bool on = autoLocateAction->isChecked();
+        if (m_pGsettingThemeStatus && m_pGsettingThemeStatus->keys().contains("autolocate")) {
+            m_pGsettingThemeStatus->set("autolocate", on);
+        }
+        emit autoLocateToggled(on);
+    });
+    connect(m_menu,&QMenu::aboutToShow,this,&menuModule::refreshAutoLocateCheckedState);
 }
 
 void menuModule::setThemeFromLocalThemeSetting(QList<QAction* > themeActions)
@@ -199,6 +214,20 @@ void menuModule::refreshIntervalCheckedState()
         customIntervalAction->setChecked(!isPreset);
         customIntervalAction->setVisible(!isPreset);
     }
+}
+
+// 菜单每次打开时按 gsettings autolocate 当前值刷新「自动定位」勾选
+// （旧编译 schema 无此 key 时按数据契约默认开启）
+void menuModule::refreshAutoLocateCheckedState()
+{
+    if (!autoLocateAction) {
+        return;
+    }
+    bool enabled = true;
+    if (m_pGsettingThemeStatus && m_pGsettingThemeStatus->keys().contains("autolocate")) {
+        enabled = m_pGsettingThemeStatus->get("autolocate").toBool();
+    }
+    autoLocateAction->setChecked(enabled);
 }
 
 void menuModule::triggerIntervalMenu(QAction *act){

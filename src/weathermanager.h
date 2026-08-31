@@ -43,6 +43,7 @@ public:
     void startGetTheWeatherData(QString cityId);
     void startTestNetwork();
     void startAutoLocationTask();
+    void startCityListBrief(); //批量拉取城市列表天气简报（城市轮播页显示用）
 
 //    int getTaskBarPos(QString str);
 //    int getTaskBarHeight(QString str);

@@ -67,7 +67,7 @@ WeatherClient::WeatherClient(QObject *parent)
     // 凭据 ID（QWEATHER_CREDENTIAL_ID）仅用于 JWT 认证，API Key 方式不使用，这里不读取。
     m_apiKey = qEnvironmentVariable("QWEATHER_API_KEY").trimmed();
 
-    // 刷新间隔单一数据源 = gsettings org.china-weather-data.settings/refresh-interval，
+    // 刷新间隔/城市列表/自动定位的单一数据源 = gsettings org.china-weather-data.settings，
     // 与应用菜单共用；监听变更实现「任一侧修改，两侧同时生效」
     if (QGSettings::isSchemaInstalled("org.china-weather-data.settings")) {
         m_gsettings = new QGSettings("org.china-weather-data.settings", QByteArray(), this);
@@ -77,6 +77,8 @@ WeatherClient::WeatherClient(QObject *parent)
         }
         connect(m_gsettings, &QGSettings::changed, this, &WeatherClient::onGSettingsChanged);
     }
+    // 城市页签与活动页（citylist / autolocate；旧 schema 缺键时按默认值容错）
+    rebuildCityTabs();
     setRefreshInterval(m_refreshInterval);
 }
 
@@ -87,9 +89,8 @@ void WeatherClient::setCityId(const QString &cityId)
     }
     m_cityId = cityId;
     emit cityIdChanged();
-    emit autoModeChanged();
-    emit activeCityNameChanged();
-    refresh();
+    // kcfg 单城市配置已不是数据源：仅在首次收到旧配置值时做一次性迁移
+    migrateLegacyCity();
 }
 
 void WeatherClient::setCityName(const QString &cityName)
@@ -97,9 +98,228 @@ void WeatherClient::setCityName(const QString &cityName)
     if (cityName == m_cityName) {
         return;
     }
+    // 仅为兼容旧 kcfg 绑定保留，不再参与展示与请求逻辑
     m_cityName = cityName;
     emit cityNameChanged();
-    emit activeCityNameChanged();
+}
+
+//--------- 多城市管理（共享 gsettings：citylist / autolocate） ---------
+// 城市列表格式与应用侧一致：逗号分隔的 LocationID，index 0 = 最近使用的城市，
+// 允许尾随逗号（如 "101010100,"）；空串 / "," = 无手动城市
+
+// 旧 kcfg 单城市配置 -> 共享 gsettings 的一次性迁移：仅当 citylist 仍是
+// 出厂默认（北京）且 kcfg 配置了非空城市时导入，避免覆盖应用侧已保存的城市
+void WeatherClient::migrateLegacyCity()
+{
+    if (m_legacyMigrated) {
+        return; // 一次性：本实例只尝试导入一次
+    }
+    m_legacyMigrated = true;
+    if (!m_gsettings || m_cityId.isEmpty()
+        || !m_gsettings->keys().contains(QStringLiteral("citylist"))) {
+        return;
+    }
+    QString stored = m_gsettings->get(QStringLiteral("citylist")).toString().trimmed();
+    while (stored.endsWith(QLatin1Char(','))) {
+        stored.chop(1);
+    }
+    if (stored != QStringLiteral("101010100")) {
+        return; // 应用侧已自定义过城市列表，不覆盖
+    }
+    m_gsettings->set(QStringLiteral("citylist"), m_cityId + QStringLiteral(","));
+    if (m_gsettings->keys().contains(QStringLiteral("autolocate"))) {
+        m_gsettings->set(QStringLiteral("autolocate"), false);
+    }
+    // 写入会经 onGSettingsChanged 回流重建页签；这里再显式重建+刷新一次，不依赖信号时序
+    rebuildCityTabs();
+    refresh();
+}
+
+// 从 gsettings 重建城市页签模型与活动页（页 0 = 自动定位，其余 = 手动城市）
+void WeatherClient::rebuildCityTabs()
+{
+    const QString previousName = activeCityName();
+    const bool previousAuto = m_autolocate;
+
+    m_autolocate = readAutoLocate();
+
+    // citylist -> 手动城市 ID（去空段，按首次出现去重，保序）
+    QStringList ids;
+    if (m_gsettings && m_gsettings->keys().contains(QStringLiteral("citylist"))) {
+        const QStringList parts = m_gsettings->get(QStringLiteral("citylist"))
+                                      .toString()
+                                      .split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            const QString id = part.trimmed();
+            if (!id.isEmpty() && !ids.contains(id)) {
+                ids.append(id);
+            }
+        }
+    }
+    m_manualCityIds = ids;
+
+    // 页签模型：页 0 的名称在 IP 定位成功后替换为解析出的城市名；
+    // 与 App 轮播自动页一致，始终带「·自动」标记（未定位到时显示「自动定位」）
+    QVariantList tabs;
+    QVariantMap autoTab;
+    autoTab.insert(QStringLiteral("id"), QString());
+    autoTab.insert(QStringLiteral("name"),
+                   m_ipResolved && !m_ipCityName.isEmpty()
+                       ? m_ipCityName + QStringLiteral("·自动")
+                       : QStringLiteral("自动定位"));
+    autoTab.insert(QStringLiteral("isAuto"), true);
+    tabs.append(autoTab);
+    for (const QString &id : std::as_const(ids)) {
+        const QString name = cityNameFromId(id);
+        QVariantMap tab;
+        tab.insert(QStringLiteral("id"), id);
+        tab.insert(QStringLiteral("name"), name.isEmpty() ? id : name);
+        tab.insert(QStringLiteral("isAuto"), false);
+        tabs.append(tab);
+    }
+    if (tabs != m_cityTabs) {
+        m_cityTabs = tabs;
+        emit cityTabsChanged();
+    }
+
+    // 活动页：自动定位（或无手动城市）-> 0；手动 -> citylist[0] 对应页
+    const int newIndex = (!m_autolocate && !ids.isEmpty()) ? 1 : 0;
+    if (newIndex != m_activeCityIndex) {
+        m_activeCityIndex = newIndex;
+        emit activeCityIndexChanged();
+    }
+    if (m_autolocate != previousAuto) {
+        emit autoModeChanged();
+    }
+    if (activeCityName() != previousName) {
+        emit activeCityNameChanged();
+    }
+}
+
+// 读 autolocate；旧 schema 未安装该键时按当前内存值容错（初始默认 true）
+bool WeatherClient::readAutoLocate() const
+{
+    if (m_gsettings && m_gsettings->keys().contains(QStringLiteral("autolocate"))) {
+        return m_gsettings->get(QStringLiteral("autolocate")).toBool();
+    }
+    return m_autolocate;
+}
+
+// 写 citylist（尾随逗号与应用侧格式一致；键缺失的旧 schema 下静默忽略）
+void WeatherClient::writeCityList(const QStringList &ids)
+{
+    if (!m_gsettings || !m_gsettings->keys().contains(QStringLiteral("citylist"))) {
+        return;
+    }
+    m_gsettings->set(QStringLiteral("citylist"),
+                     ids.join(QLatin1Char(',')) + QStringLiteral(","));
+}
+
+// 写 autolocate（键缺失的旧 schema 下仅更新内存值，本会话仍可切换）
+void WeatherClient::writeAutoLocate(bool on)
+{
+    m_autolocate = on;
+    if (!m_gsettings || !m_gsettings->keys().contains(QStringLiteral("autolocate"))) {
+        return;
+    }
+    m_gsettings->set(QStringLiteral("autolocate"), on);
+}
+
+void WeatherClient::setActiveCityIndex(int index)
+{
+    if (index <= 0) {
+        setAutoLocate(true); // 页 0 = 自动定位：恢复自动定位为当前城市
+        return;
+    }
+    if (index - 1 >= m_manualCityIds.size()) {
+        return; // 越界：无对应手动城市
+    }
+    // 浏览手动城市页签：仅切换当前显示（fetchAll 拉取该城），不写共享 gsettings，
+    // 不改变自动定位状态——自动定位仍是配置的当前城市，浏览不影响 App 的当前城市
+    m_activeCityIndex = index;
+    emit activeCityIndexChanged();
+    refresh();
+}
+
+void WeatherClient::addCity(const QString &id, const QString &name)
+{
+    const QString trimmed = id.trimmed();
+    if (trimmed.isEmpty() || m_manualCityIds.contains(trimmed)) {
+        return; // 空值或已存在（去重）
+    }
+    // 与应用侧收藏容量一致：最多 8 个手动城市，超出时丢弃最旧的
+    QStringList ids = m_manualCityIds;
+    while (ids.size() >= 8) {
+        ids.removeLast();
+    }
+    ids.append(trimmed);
+    if (!name.trimmed().isEmpty()) {
+        m_extraCityNames.insert(trimmed, name.trimmed()); // 城市表未命中时的展示兜底
+    }
+    writeCityList(ids);
+    rebuildCityTabs();
+}
+
+void WeatherClient::removeCity(int tabIndex)
+{
+    // 页 0 为自动定位页不可删；越界忽略
+    if (tabIndex <= 0 || tabIndex > m_manualCityIds.size()) {
+        return;
+    }
+    const bool removedActive = (tabIndex == m_activeCityIndex);
+    QStringList ids = m_manualCityIds;
+    ids.removeAt(tabIndex - 1);
+    writeCityList(ids);
+    // 删除的恰为当前生效城市：仍有剩余则继续用新的 citylist[0]，否则回退自动定位
+    if (removedActive) {
+        writeAutoLocate(ids.isEmpty());
+    }
+    rebuildCityTabs();
+    if (removedActive) {
+        refresh();
+    }
+}
+
+void WeatherClient::setAutoLocate(bool on)
+{
+    writeAutoLocate(on);
+    rebuildCityTabs();
+    refresh();
+}
+
+// 当前实际生效的 LocationID（自动 = IP 解析结果；手动 = citylist[0]）
+QString WeatherClient::currentLocationId() const
+{
+    if (m_autolocate) {
+        return m_ipResolved ? m_ipCityId : QString();
+    }
+    return m_manualCityIds.isEmpty() ? QString() : m_manualCityIds.first();
+}
+
+// 实际生效的城市名（随活动页签：自动页 = IP 解析名；手动页 = 该城城市名）
+QString WeatherClient::activeCityName()
+{
+    if (m_activeCityIndex <= 0 || m_manualCityIds.isEmpty()) {
+        return m_ipCityName;
+    }
+    const QString id = m_manualCityIds.value(m_activeCityIndex - 1);
+    if (id.isEmpty()) {
+        return QString();
+    }
+    const QString name = cityNameFromId(id);
+    return name.isEmpty() ? id : name;
+}
+
+// LocationID -> 城市中文名：查本地城市表；未命中回退 addCity 携带的兜底名
+QString WeatherClient::cityNameFromId(const QString &id)
+{
+    ensureCityTableLoaded();
+    for (const CityRecord &record : std::as_const(m_cities)) {
+        if (record.id == id) {
+            return record.name;
+        }
+    }
+    return m_extraCityNames.value(id);
 }
 
 void WeatherClient::setRefreshInterval(int minutes)
@@ -140,6 +360,16 @@ void WeatherClient::onGSettingsChanged(const QString &key)
         if (stored > 0) {
             applyRefreshInterval(stored);
         }
+        return;
+    }
+    // 城市列表/自动定位变更（应用侧或另一小部件实例修改）：重建页签，
+    // 实际生效的城市变化时立即刷新
+    if (key == QLatin1String("citylist") || key == QLatin1String("autolocate")) {
+        const QString previousLocationId = currentLocationId();
+        rebuildCityTabs();
+        if (currentLocationId() != previousLocationId) {
+            refresh();
+        }
     }
 }
 
@@ -150,8 +380,9 @@ void WeatherClient::refresh()
             "未设置 QWEATHER_API_KEY 环境变量，无法请求和风天气数据；配置方式见 README「和风天气凭据配置」章节。"));
         return;
     }
-    // 自动定位模式：先用公网 IP 解析出城市，再拉取天气（结果仅缓存于本会话内存）
-    if (m_cityId.isEmpty()) {
+    // 按当前活动页签拉取：页 0 = 自动定位（先 IP 解析再拉取，结果仅缓存本会话），
+    // 其余 = 对应手动城市。自动定位仍是配置的当前城市，浏览手动城市不影响 autolocate
+    if (m_activeCityIndex <= 0 || m_manualCityIds.isEmpty()) {
         if (m_ipResolved) {
             fetchAll(m_ipCityId);
         } else {
@@ -159,7 +390,7 @@ void WeatherClient::refresh()
         }
         return;
     }
-    fetchAll(m_cityId);
+    fetchAll(m_manualCityIds.value(m_activeCityIndex - 1));
 }
 
 void WeatherClient::fetchAll(const QString &locationId)
@@ -277,6 +508,13 @@ void WeatherClient::finishIpLocation(const QString &city, const QString &provinc
     m_locating = false;
     emit locatingChanged();
     emit activeCityNameChanged();
+    // 自动定位页名称同步为解析出的城市名（页签模型页 0，带「·自动」标记）
+    if (!m_cityTabs.isEmpty()) {
+        QVariantMap autoTab = m_cityTabs.at(0).toMap();
+        autoTab.insert(QStringLiteral("name"), m_ipCityName + QStringLiteral("·自动"));
+        m_cityTabs.replace(0, autoTab);
+        emit cityTabsChanged();
+    }
     qWarning() << "IP 自动定位成功：" << city << "->" << matchedName << "(" << matchedId << ")";
     fetchAll(m_ipCityId);
 }

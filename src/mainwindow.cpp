@@ -19,6 +19,9 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QPainter>
+#include <QFile>
+#include <QHBoxLayout>
+#include <QWheelEvent>
 
 int tempNumsOfCityInSearchResultList = 0;//搜索列表中城市数量
 
@@ -56,10 +59,24 @@ MainWindow::MainWindow(QWidget *parent) :
     cityLabel = new QLabel(this);
     cityLabel->setStyleSheet("font:36px;color:white;");
     cityLabel->setAlignment(Qt::AlignCenter);
+    cityLabel->hide(); //已被城市轮播m_cityStack取代，不再显示
 
     m_menu = new menuModule(this);
     connect(m_menu,&menuModule::menuModuleClose,this,&MainWindow::closeActivated);
     connect(m_menu, &menuModule::refreshIntervalChanged, this, &MainWindow::onRefreshIntervalChanged);
+    // 菜单「自动定位」开关：勾选 = 自动定位成为当前城市（轮播页0并定位）；
+    // 取消 = 显式关闭自动定位，citylist[0] 成为当前城市（唯一关闭自动定位的入口）
+    connect(m_menu, &menuModule::autoLocateToggled, this, [=] (bool on) {
+        if (on) {
+            onCityPageActivated(0); //切换到自动定位页并开始定位
+        } else {
+            setAutoLocate(false);
+            const QString headCityId = getCityList().split(",", Qt::SkipEmptyParts).value(0);
+            if (!headCityId.isEmpty()) {
+                switchToManualCity(headCityId); //浏览并定位到citylist首个手动城市
+            }
+        }
+    });
     m_menu->addCityAction->setText(tr("Add City"));
     connect(m_menu->addCityAction, &AddCityAction::requestSetCityName, this, [=] (QString cityName) {
         cityLabel->setText(cityName);//一会设置个label用于显示地名
@@ -164,7 +181,18 @@ MainWindow::MainWindow(QWidget *parent) :
             }
         });
     }
+    // 收藏城市简报去抖：短时间内连续rebuild轮播只触发一批简报请求
+    m_cityBriefTimer = new QTimer(this);
+    m_cityBriefTimer->setSingleShot(true);
+    m_cityBriefTimer->setInterval(300);
+    connect(m_cityBriefTimer, &QTimer::timeout, this, [this] () {
+        if (m_weatherManager) {
+            m_weatherManager->startCityListBrief();
+        }
+    });
+
     initGsetting();//初始化Gsetting
+    rebuildCityStack();//构建初始城市轮播（置于initGsetting之后，保证gsettings可读）
 }
 
 MainWindow::~MainWindow()
@@ -282,6 +310,18 @@ void MainWindow::initControlQss()
     m_information = new Information(m_scrollwidget);
     m_information->move(0,0);
 
+    // 旧的浮动实况天气控件被城市轮播取代，保留在.ui中但不再显示
+    ui->lbCurrTmp->setVisible(false);
+    ui->lbCurrTmpUnit->setVisible(false);
+    ui->lbCurrWea->setVisible(false);
+    ui->lbCurrHum->setVisible(false);
+
+    // 城市轮播：覆盖实况天气区域的透明容器（标题栏之下、七天预报区之上），
+    // 须在搜索下拉框m_searchView创建之前创建，保证下拉框浮于其上、不被遮挡点击
+    m_cityStack = new QStackedWidget(ui->widget_normal);
+    m_cityStack->setGeometry(0, 58, 865, 230);
+    m_cityStack->setStyleSheet("QStackedWidget{border:none;background:transparent;}");
+    m_cityStack->installEventFilter(this);
 }
 
 void MainWindow::initConnections()
@@ -301,14 +341,16 @@ void MainWindow::initConnections()
 //    connect(m_searchView, SIGNAL(requestSetCityName(QString)), m_leftupcitybtn, SIGNAL(requestSetCityName(QString)) );
 
     connect(m_searchView, &LeftUpSearchView::requestSetNewCityWeather, this, [=] (QString id) {
-        m_weatherManager->startGetTheWeatherData(id);
+        // 搜索列表选中城市：关闭自动定位，城市移至citylist首位并拉取天气
+        switchToManualCity(id);
     });
     //2*****addCityAction替换原来的m_leftupcitybtn*****
     connect(m_menu->addCityAction,&AddCityAction::sendCurrentCityId, this, [=] (QString id) {
         if(this->isHidden() || this->isMinimized()){
             handleIconClickedSub(); //显示在屏幕中央
         }
-        m_weatherManager->startGetTheWeatherData(id);
+        // 收藏城市窗口选中城市：关闭自动定位，城市移至citylist首位并拉取天气
+        switchToManualCity(id);
     });
 //    connect(m_leftupcitybtn, &LeftUpCityBtn::sendCurrentCityId, this, [=] (QString id) {
 //        if(this->isHidden()){
@@ -326,10 +368,15 @@ void MainWindow::initConnections()
     connect(this,&MainWindow::updatecity,m_menu->addCityAction,&AddCityAction ::updatecity);
 //    connect(this,&MainWindow::updatecity,m_leftupcitybtn,&LeftUpCityBtn ::updatecity);
 
-    //获取传过来的收藏城市的天气数据，并传给显示收藏城市窗口
-    //5*****addCityAction替换原来的m_leftupcitybtn*****
-    connect(m_weatherManager, SIGNAL(requestSetCityWeather(QString)), m_menu->addCityAction, SIGNAL(requestSetCityWeather(QString)));
-//    connect(m_weatherManager, SIGNAL(requestSetCityWeather(QString)), m_leftupcitybtn, SIGNAL(requestSetCityWeather(QString)));
+    //获取传过来的收藏城市的天气数据，并传给显示收藏城市窗口（经本窗口中转以插当前城市）
+    connect(m_weatherManager, &WeatherManager::requestSetCityWeather, this, [=] (const QString &weather_data) {
+        // 城市轮播页简报：更新各城市页温度/天气/城市名
+        onSetCityWeatherBrief(weather_data);
+        // 收藏城市对话框：自动定位开启时把实际当前城市（自动定位城市）插到简报最前，
+        // 使 strList[0]=当前城市、citylist 各城市按收藏城市显示；关闭自动定位时原样转发
+        const QString enriched = isAutoLocateEnabled() ? prependCurrentCityBrief(weather_data) : weather_data;
+        emit m_menu->addCityAction->requestSetCityWeather(enriched);
+    });
     //没有网络的时候发送信号到收藏城市界面阻断动作进行
     connect(m_weatherManager,&WeatherManager::noNetWork,m_menu->addCityAction,&AddCityAction::noNetWork);
     //收到信号带来的数据时，更新主界面天气数据
@@ -364,12 +411,9 @@ void MainWindow::initConnections()
     //根据获取到网络探测的结果分别处理
     connect(m_weatherManager, &WeatherManager::nofityNetworkStatus, this, [=] (const QString &status) {
         if (status == "OK") {
-            m_weatherManager->startAutoLocationTask();//开始自动定位城市
-
-            //CN101010100,beijing,北京,CN,China,中国
-//            m_weatherManager->startGetTheWeatherData("101010100");
-            QStringList listCityId = getCityList().split(",");
-            m_weatherManager->startGetTheWeatherData(listCityId.at(0));
+            // 网络可用时按当前模式仅拉取当前城市：自动定位模式只开始定位（定位成功后再拉取），
+            // 手动模式只拉取citylist[0]（为空时跳过），避免并发双请求的竞态
+            fetchCurrentCityWeather(true);
 
         } else {
             if (status == "Fail") {
@@ -381,15 +425,18 @@ void MainWindow::initConnections()
         }
     });
 
-    //自动定位成功后，更新各个控件的默认城市数据，并开始获取天气数据
+    //自动定位成功后，更新城市轮播的自动定位页城市，并开始获取天气数据
     connect(m_weatherManager, &WeatherManager::requestAutoLocationData, this, [=] (const CitySettingData &info, bool success) {
         if (success) {
-            //自动定位城市成功后，更新各个ui，然后获取天气数据
+            //自动定位城市成功后，更新自动定位页显示，然后获取天气数据
+            updateAutoLocatedCity(info.id, info.name);
             m_weatherManager->startGetTheWeatherData(info.id);
-
-
         } else {
-            //自动定位城市失败后，获取天气数据
+            // 自动定位失败后回退拉取citylist首个手动城市，保证主界面仍有数据可显示
+            const QString fallbackCityId = getCityList().split(",", Qt::SkipEmptyParts).value(0);
+            if (!fallbackCityId.isEmpty()) {
+                m_weatherManager->startGetTheWeatherData(fallbackCityId);
+            }
         }
     });
 
@@ -610,6 +657,12 @@ void MainWindow::setAbnormalMainWindow()
     ui->lbCurrWea->setText("");
     ui->lbCurrHum->setText("");
     cityLabel->setText("");//baibai
+    //同时清空城市轮播各页的简报，与旧控件异常时清空显示的行为保持一致
+    for (CityPage &page : m_cityPages) {
+        setCityPageTmp(page, QString());
+        page.condLabel->setText("");
+        page.humLabel->setText("");
+    }
 
     ForecastWeather abnormalForecastweather;
     for (int i=0; i<7; i++) {
@@ -738,6 +791,7 @@ void MainWindow::onSetForecastWeather(ForecastWeather m_forecastweather)
 //设置实况天气显示
 void MainWindow::onSetObserveWeather(ObserveWeather m_observeweather)
 {
+    m_currentObserve = m_observeweather; //记录当前实际城市天气，供收藏简报插最前/当前城市卡片
     if (m_observeweather.tmp != "") {
         m_hintWidget->setVisible(false);
     }
@@ -755,41 +809,32 @@ void MainWindow::onSetObserveWeather(ObserveWeather m_observeweather)
     QString picQss = "#centralwidget{color:white;background-image:url(" + picStr + ");background-repeat:no-repeat;}";
     ui->centralwidget->setStyleSheet(picQss);
 
-    ui->lbCurrTmp->setText(m_observeweather.tmp);
-    int m_size1 = m_observeweather.tmp.size();
-
-    if(m_size1 == 3){
-
-        ui->lbCurrTmp->setGeometry(351,145,155,100);
-        ui->lbCurrTmpUnit->move(447 + 30*(m_size1-1), 155);
-        ui->lbCurrWea->move(450 + 30*(m_size1-1), 225);
-        cityLabel->setGeometry(405,104,250,50);
-        cityLabel->move(ui->lbCurrTmp->x() + int((ui->lbCurrTmp->width() + ui->lbCurrTmpUnit->width() - cityLabel->width())/2),104);
-
-    }
-    else if(m_size1 == 1 || m_size1 ==2){
-
-
-    ui->lbCurrTmp->setGeometry(351,145,116,100);
-    ui->lbCurrTmpUnit->move(451 + 30*(m_size1-1), 155);
-    ui->lbCurrWea->move(454 + 30*(m_size1-1), 225);
-    cityLabel->setGeometry(420,104,250,50);
-    cityLabel->move(ui->lbCurrTmp->x() + int((ui->lbCurrTmp->width() + ui->lbCurrTmpUnit->width() - cityLabel->width())/2),104);
-
-}
-
-
-    ui->lbCurrTmpUnit->setText("℃");
-
-    ui->lbCurrWea->setText(m_observeweather.cond_txt);
-
     QString strHum = "湿度 " + m_observeweather.hum + "%   " + m_observeweather.wind_dir + " " + m_observeweather.wind_sc + "级";//  Humidity-湿度
-    ui->lbCurrHum->setText(strHum);//湿度和风级标签
-    ui->lbCurrHum->hide();
+
+    // 更新城市轮播中匹配页的简报（城市名/温度/天气/湿度），旧的浮动控件已被轮播页取代
+    for (CityPage &page : m_cityPages) {
+        if (page.id != m_observeweather.id) {
+            continue;
+        }
+        if (!m_observeweather.city.isEmpty()) {
+            setCityPageName(page, m_observeweather.city);
+        }
+        setCityPageTmp(page, m_observeweather.tmp);
+        page.condLabel->setText(m_observeweather.cond_txt);
+        page.humLabel->setText(strHum);//湿度和风级标签
+    }
 
     if (m_observeweather.city != "") {
 //        emit m_leftupcitybtn ->requestSetCityName(m_observeweather.city); //更新左上角按钮显示的城市
         emit m_menu->addCityAction->requestSetCityName(m_observeweather.city); //更新中间Label显示的城市
+        //收藏对话框的「当前城市」卡片同步为实际当前城市（自动定位时即自动定位城市），
+        //与主窗口保持一致，覆盖其仅以citylist[0]为当前城市的旧逻辑
+        m_menu->addCityAction->setCurrentCityWeather(m_observeweather);
+    }
+
+    // 自动定位模式下当前城市由定位决定，不写入citylist；仅在手动模式把当前城市持久化到citylist[0]
+    if (isAutoLocateEnabled()) {
+        return;
     }
 
     //更新保存城市列表文件china-weather-data
@@ -948,19 +993,11 @@ void MainWindow::initGsetting()
     {
         m_pWeatherData = new QGSettings(CHINAWEATHERDATA);
         firstGetCityList=m_pWeatherData->get("citylist").toString();
-        //监听key的value是否发生了变化
+        //监听citylist/autolocate键的value是否发生了变化（轮播切换/菜单/收藏窗口/小部件侧都可能写入）：
+        //统一走onWeatherDataGsettingChanged重建轮播并按需拉取当前城市天气（内部去重避免重复拉取）
         connect(m_pWeatherData, &QGSettings::changed, this, [=] (const QString &key)
         {
-            if (key == "citylist")
-            {
-                QString nowCityList=m_pWeatherData->get("citylist").toString();
-                if(nowCityList.split(",").first()!=firstGetCityList.split(",").first())
-                {
-                    m_weatherManager->startGetTheWeatherData(nowCityList.split(",").at(0));
-                    firstGetCityList=nowCityList;
-                    emit updatecity();
-                }
-            }
+            onWeatherDataGsettingChanged(key);
         });
     }
     if(QGSettings::isSchemaInstalled(FITTHEMEWINDOW))
@@ -1020,6 +1057,446 @@ QString MainWindow::getCityList()
 void MainWindow::setCityList(QString str)
 {
     m_pWeatherData->set("citylist", str);
+}
+
+//读取autolocate键：key缺失表示旧编译schema尚未重装，按数据契约默认开启
+bool MainWindow::isAutoLocateEnabled()
+{
+    if (m_pWeatherData == nullptr || !m_pWeatherData->keys().contains("autolocate")) {
+        return true;
+    }
+    return m_pWeatherData->get("autolocate").toBool();
+}
+
+//写入autolocate键（旧schema无此key时跳过写入，会话内状态仍经信号流转）
+void MainWindow::setAutoLocate(bool on)
+{
+    if (m_pWeatherData == nullptr || !m_pWeatherData->keys().contains("autolocate")) {
+        return;
+    }
+    m_pWeatherData->set("autolocate", on);
+}
+
+//gsettings citylist/autolocate变化的统一处理：重建轮播并按需拉取当前城市天气
+//浏览/添加手动城市（写入citylist）不改变自动定位：autolocate只由菜单「自动定位」
+//开关显式切换，保证开启自动定位时「当前城市」始终是自动定位页而非手动城市
+void MainWindow::onWeatherDataGsettingChanged(const QString &key)
+{
+    if (key != "citylist" && key != "autolocate") {
+        return;
+    }
+
+    const QString nowCityList = getCityList();
+    const QString nowHeadCityId = nowCityList.split(",", Qt::SkipEmptyParts).value(0);
+    const QString firstHeadCityId = firstGetCityList.split(",", Qt::SkipEmptyParts).value(0);
+
+    rebuildCityStack();
+    fetchCurrentCityWeather();
+
+    if (nowHeadCityId != firstHeadCityId) {
+        emit updatecity(); //通知收藏城市窗口刷新显示
+        firstGetCityList = nowCityList;
+    }
+}
+
+//按autolocate/citylist拉取当前城市天气：自动定位模式只开始定位（成功后再拉取），
+//手动模式只拉取citylist[0]（为空时跳过）。记录最近拉取状态，使自身写gsettings
+//触发的changed回调能跳过重复拉取（避免轮播切换时双重请求）
+void MainWindow::fetchCurrentCityWeather(bool force)
+{
+    const bool autoLocate = isAutoLocateEnabled();
+    const QString manualCityId = autoLocate ? QString() : getCityList().split(",", Qt::SkipEmptyParts).value(0);
+
+    if (!force && autoLocate == m_appliedFetchAuto && manualCityId == m_appliedFetchCityId) {
+        return;
+    }
+    m_appliedFetchAuto = autoLocate;
+    m_appliedFetchCityId = manualCityId;
+
+    if (autoLocate) {
+        m_weatherManager->startAutoLocationTask();
+    } else if (!manualCityId.isEmpty()) {
+        m_weatherManager->startGetTheWeatherData(manualCityId);
+    }
+}
+
+//创建一个城市轮播页：透明容器，居中纵向排布城市名/大温度/天气/湿度
+void MainWindow::createCityPage(const QString &id, const QString &name, bool isAuto)
+{
+    QWidget *page = new QWidget(m_cityStack);
+    page->setStyleSheet("QWidget{border:none;border-radius:4px;background:transparent;}");
+    page->installEventFilter(this);
+
+    CityPage cityPage;
+    cityPage.id = id;
+    cityPage.name = name;
+    cityPage.isAuto = isAuto;
+    cityPage.pageWidget = page;
+
+    cityPage.nameLabel = new QLabel(page);
+    cityPage.nameLabel->setAlignment(Qt::AlignCenter);
+    cityPage.nameLabel->setFixedHeight(40);
+    cityPage.nameLabel->setStyleSheet("QLabel{border:none;background:transparent;font-size:34px;font-weight:bold;color:rgba(255,255,255,1);}");
+    cityPage.nameLabel->setText(isAuto ? (name.isEmpty() ? tr("自动定位") : name + tr(" · 自动")) : name);
+
+    //大温度与单位同行，保持原居中大温度的显示样式
+    QHBoxLayout *tmpLayout = new QHBoxLayout();
+    tmpLayout->setSpacing(0);
+    cityPage.tmpLabel = new QLabel(page);
+    cityPage.tmpLabel->setAlignment(Qt::AlignCenter);
+    cityPage.tmpLabel->setFixedHeight(100);
+    cityPage.tmpLabel->setStyleSheet("QLabel{border:none;background:transparent;font-size:110px;font-weight:300;color:rgba(255,255,255,1);line-height:100px;}");
+    cityPage.unitLabel = new QLabel(page);
+    cityPage.unitLabel->setText("℃");
+    cityPage.unitLabel->setStyleSheet("QLabel{border:none;background:transparent;font-size:24px;color:rgba(255,255,255,1);}");
+    cityPage.unitLabel->setVisible(false); //随温度一起显示
+    tmpLayout->addStretch();
+    tmpLayout->addWidget(cityPage.tmpLabel);
+    tmpLayout->addWidget(cityPage.unitLabel, 0, Qt::AlignTop | Qt::AlignLeft);
+    tmpLayout->addStretch();
+
+    cityPage.condLabel = new QLabel(page);
+    cityPage.condLabel->setAlignment(Qt::AlignCenter);
+    cityPage.condLabel->setFixedHeight(24);
+    cityPage.condLabel->setStyleSheet("QLabel{border:none;background:transparent;font-size:20px;color:rgba(255,255,255,1);}");
+
+    cityPage.humLabel = new QLabel(page);
+    cityPage.humLabel->setAlignment(Qt::AlignCenter);
+    cityPage.humLabel->setFixedHeight(18);
+    cityPage.humLabel->setStyleSheet("QLabel{border:none;background:transparent;font-size:14px;color:rgba(255,255,255,1);}");
+
+    QVBoxLayout *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 30, 0, 0);
+    pageLayout->setSpacing(6);
+    pageLayout->addWidget(cityPage.nameLabel);
+    pageLayout->addLayout(tmpLayout);
+    pageLayout->addWidget(cityPage.condLabel);
+    pageLayout->addWidget(cityPage.humLabel);
+
+    //各label对鼠标透明，保证拖动/滚轮事件直接落在页面上
+    cityPage.nameLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    cityPage.tmpLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    cityPage.unitLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    cityPage.condLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    cityPage.humLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+
+    m_cityPages.append(cityPage);
+    m_cityStack->addWidget(page);
+}
+
+//按gsettings重建城市轮播：page0为自动定位页，pages 1..n为citylist顺序的手动城市；
+//活动位置为自动定位时0、手动模式时头城市所在页
+void MainWindow::rebuildCityStack()
+{
+    if (m_cityStack == nullptr) {
+        return;
+    }
+
+    //记住当前浏览页的城市ID（空=自动定位页），重建后尽量恢复浏览位置，
+    //避免写citylist触发的gsettings回调（异步重建）把浏览中的手动城市页重置回自动页
+    const QString activeViewId = m_activeViewCityId;
+
+    //清空旧页
+    while (m_cityStack->count() > 0) {
+        QWidget *oldPage = m_cityStack->widget(0);
+        m_cityStack->removeWidget(oldPage);
+        oldPage->deleteLater();
+    }
+    m_cityPages.clear();
+
+    const bool autoLocate = isAutoLocateEnabled();
+    const QStringList cityIds = getCityList().split(",", Qt::SkipEmptyParts);
+
+    //page0为自动定位页，定位成功后显示定位到的城市名
+    createCityPage(m_autoCityId, m_autoCityName.isEmpty() ? tr("自动定位") : m_autoCityName, true);
+
+    int currentIndex = 0;
+    const QString headCityId = cityIds.value(0);
+    QStringList addedIds;
+    for (const QString &cityId : cityIds) {
+        if (cityId.isEmpty() || addedIds.contains(cityId)) {
+            continue; //跳过异常列表中的重复城市ID（收藏窗口可能写入重复项）
+        }
+        addedIds.append(cityId);
+        const QString cityName = cityNameFromId(cityId); //城市表无匹配时回退显示LocationID
+        createCityPage(cityId, cityName.isEmpty() ? cityId : cityName, false);
+    }
+
+    //活动页：优先恢复重建前的浏览位置；该页已不存在（如城市被删）或从未浏览时，
+    //回退到默认当前城市——自动定位开启时为自动页0，否则为citylist[0]对应页
+    if (!activeViewId.isEmpty()) {
+        for (int i = 1; i < m_cityPages.size(); ++i) {
+            if (!m_cityPages.at(i).isAuto && m_cityPages.at(i).id == activeViewId) {
+                currentIndex = i;
+                break;
+            }
+        }
+    } else if (!autoLocate && !headCityId.isEmpty()) {
+        for (int i = 1; i < m_cityPages.size(); ++i) {
+            if (!m_cityPages.at(i).isAuto && m_cityPages.at(i).id == headCityId) {
+                currentIndex = i;
+                break;
+            }
+        }
+    }
+    m_cityStack->setCurrentIndex(currentIndex);
+    //记录当前活动页的城市ID（空=自动定位页），供下次重建恢复浏览位置
+    m_activeViewCityId = (currentIndex > 0) ? m_cityPages.at(currentIndex).id : QString();
+
+    //重建后拉取各城市天气简报，使每个页面都有基础数据（去抖合并连续重建触发的请求）
+    scheduleCityListBrief();
+}
+
+//轮播页被激活（拖动/滚轮/菜单切换）：同步当前城市
+void MainWindow::onCityPageActivated(int index)
+{
+    if (index < 0 || index >= m_cityPages.size()) {
+        return;
+    }
+    const QString cityId = m_cityPages.at(index).id;
+    const bool isAutoPage = m_cityPages.at(index).isAuto;
+    if (isAutoPage) {
+        //切换到自动定位页：开启autolocate并开始定位
+        m_activeViewCityId.clear();
+        if (!isAutoLocateEnabled()) {
+            setAutoLocate(true);
+        }
+        m_appliedFetchAuto = true;
+        m_appliedFetchCityId.clear();
+        m_weatherManager->startAutoLocationTask();
+        m_cityStack->setCurrentIndex(index);
+    } else {
+        switchToManualCity(cityId);
+    }
+}
+
+//浏览/添加手动城市：城市移至citylist首位（去重、最多8个）并拉取其天气；
+//不改变自动定位状态——自动定位开启时「当前城市」仍是自动定位页，
+//手动城市仅作为可浏览页；关闭自动定位只能经菜单「自动定位」开关显式操作
+void MainWindow::switchToManualCity(const QString &cityId)
+{
+    if (cityId.isEmpty()) {
+        return;
+    }
+
+    //浏览位置记录为该城市，供重建轮播时恢复
+    m_activeViewCityId = cityId;
+
+    QStringList cityIds = getCityList().split(",", Qt::SkipEmptyParts);
+    if (cityIds.value(0) != cityId) {
+        cityIds.removeAll(cityId);
+        cityIds.prepend(cityId);
+        while (cityIds.size() > 8) {
+            cityIds.removeLast();
+        }
+        setCityList(cityIds.join(",") + ",");
+    }
+
+    //记录本次拉取状态后再发起请求，使自身写gsettings触发的changed回调可跳过重复拉取。
+    //自动定位开启时浏览手动城市，拉取状态记为「自动」：避免把这次手动浏览误当成
+    //模式切换而触发自动定位重解析（双请求）
+    if (isAutoLocateEnabled()) {
+        m_appliedFetchAuto = true;
+        m_appliedFetchCityId.clear();
+    } else {
+        m_appliedFetchAuto = false;
+        m_appliedFetchCityId = cityId;
+    }
+    m_weatherManager->startGetTheWeatherData(cityId);
+
+    rebuildCityStack();
+    //重建后该城市位于首页（page1），显式指向该页（旧schema无autolocate键时同样生效）
+    for (int i = 0; i < m_cityPages.size(); ++i) {
+        if (m_cityPages.at(i).id == cityId) {
+            m_cityStack->setCurrentIndex(i);
+            break;
+        }
+    }
+}
+
+//记录/更新自动定位到的城市（轮播重建时恢复自动定位页显示）
+void MainWindow::updateAutoLocatedCity(const QString &cityId, const QString &cityName)
+{
+    m_autoCityId = cityId;
+    m_autoCityName = cityName;
+    for (CityPage &page : m_cityPages) {
+        if (page.isAuto) {
+            page.id = cityId;
+            setCityPageName(page, cityName);
+            break;
+        }
+    }
+}
+
+//更新某页温度显示（单位随温度显示/隐藏）
+void MainWindow::setCityPageTmp(CityPage &page, const QString &tmp)
+{
+    page.tmpLabel->setText(tmp);
+    page.unitLabel->setVisible(!tmp.isEmpty());
+}
+
+//统一设置城市页名：自动定位页始终带「·自动」标记（未定位到城市时显示「自动定位」），
+//与面板小部件自动定位 tab 的标记保持一致，保证 App 中自动定位入口始终可见可辨
+void MainWindow::setCityPageName(CityPage &page, const QString &name)
+{
+    page.name = name;
+    page.nameLabel->setText(page.isAuto
+                                ? (name.isEmpty() ? tr("自动定位") : name + tr(" · 自动"))
+                                : name);
+}
+
+//解析收藏城市天气简报并更新轮播中匹配的页面（含中文城市名）
+//格式见WeatherWorker::buildCitySimpleData："tmp=26,cond_txt=阴,cond_code=104,id=101250101,location=长沙;"逐城拼接
+void MainWindow::onSetCityWeatherBrief(QString weather_data)
+{
+    if (m_cityPages.isEmpty() || weather_data.isEmpty()) {
+        return;
+    }
+
+    const QStringList records = weather_data.split(";", Qt::SkipEmptyParts);
+    for (const QString &record : records) {
+        QString tmp;
+        QString condTxt;
+        QString cityId;
+        QString location;
+        const QStringList fields = record.split(",");
+        for (const QString &field : fields) {
+            const QStringList pair = field.split("=");
+            if (pair.size() != 2) {
+                continue;
+            }
+            if (pair.at(0) == "tmp") {
+                tmp = pair.at(1);
+            } else if (pair.at(0) == "cond_txt") {
+                condTxt = pair.at(1);
+            } else if (pair.at(0) == "id") {
+                cityId = pair.at(1);
+            } else if (pair.at(0) == "location") {
+                location = pair.at(1);
+            }
+        }
+        if (cityId.isEmpty()) {
+            continue;
+        }
+        for (CityPage &page : m_cityPages) {
+            if (page.id != cityId) {
+                continue;
+            }
+            setCityPageTmp(page, tmp);
+            page.condLabel->setText(condTxt);
+            if (!location.isEmpty() && location != "-") {
+                setCityPageName(page, location);
+            }
+        }
+    }
+}
+
+//去抖发起收藏城市简报批量拉取
+void MainWindow::scheduleCityListBrief()
+{
+    if (m_cityBriefTimer) {
+        m_cityBriefTimer->start();
+    }
+}
+
+//自动定位时把主程序实际当前城市（自动定位城市）的简报插到收藏简报最前面，
+//使收藏对话框 strList[0]=当前城市、citylist 各城市按收藏城市显示；
+//否则其仅以 citylist[0] 为当前城市，自动定位场景下 citylist[0] 会被当前城市占用而漏显示
+QString MainWindow::prependCurrentCityBrief(const QString &batch)
+{
+    if (m_currentObserve.id.isEmpty()) {
+        return batch;
+    }
+    const QString brief = QString("tmp=%1,cond_txt=%2,cond_code=%3,id=%4,location=%5;")
+            .arg(m_currentObserve.tmp, m_currentObserve.cond_txt,
+                 m_currentObserve.cond_code, m_currentObserve.id, m_currentObserve.city);
+    return brief + batch;
+}
+
+//从内置城市表按LocationID解析城市名，未找到返回空（调用方回退显示ID）
+QString MainWindow::cityNameFromId(const QString &id)
+{
+    if (id.isEmpty()) {
+        return QString();
+    }
+    QFile file(":/data/data/china-city-list.csv");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    while (!file.atEnd()) {
+        const QString line = QString::fromUtf8(file.readLine()).remove("\r").remove("\n");
+        const QStringList resultList = line.split(",");
+        if (resultList.length() < 8 || !resultList.at(0).startsWith("CN")) {
+            continue;
+        }
+        if (resultList.at(0).mid(2) == id) { //去掉"CN"前缀后比较
+            return resultList.at(2);
+        }
+    }
+    file.close();
+    return QString();
+}
+
+//轮播页交互事件过滤器：左右拖动（阈值40px）或滚动滚轮切换城市页
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (m_cityStack != nullptr) {
+        bool watchedByCarousel = (watched == m_cityStack);
+        if (!watchedByCarousel) {
+            for (const CityPage &page : m_cityPages) {
+                if (page.pageWidget == watched) {
+                    watchedByCarousel = true;
+                    break;
+                }
+            }
+        }
+
+        if (watchedByCarousel) {
+            switch (event->type()) {
+            case QEvent::MouseButtonPress: {
+                auto *mouseEvent = static_cast<QMouseEvent *>(event);
+                if (mouseEvent->button() == Qt::LeftButton) {
+                    m_swiping = true;
+                    m_swipeStartX = mouseEvent->pos().x();
+                    return true;
+                }
+                break;
+            }
+            case QEvent::MouseButtonRelease: {
+                if (!m_swiping) {
+                    break;
+                }
+                m_swiping = false;
+                auto *mouseEvent = static_cast<QMouseEvent *>(event);
+                const int offsetX = mouseEvent->pos().x() - m_swipeStartX;
+                if (qAbs(offsetX) >= 40) { //拖动距离阈值，避免误把点击当成滑动
+                    //向右拖切换上一页，向左拖切换下一页
+                    const int targetIndex = m_cityStack->currentIndex() + (offsetX > 0 ? -1 : 1);
+                    if (targetIndex >= 0 && targetIndex < m_cityStack->count()) {
+                        onCityPageActivated(targetIndex);
+                    }
+                }
+                return true;
+            }
+            case QEvent::Wheel: {
+                auto *wheelEvent = static_cast<QWheelEvent *>(event);
+                const QPoint angleDelta = wheelEvent->angleDelta();
+                const int delta = qAbs(angleDelta.x()) > qAbs(angleDelta.y()) ? angleDelta.x() : angleDelta.y();
+                if (delta != 0) {
+                    //上滚（含左滚）切换上一页，下滚切换下一页
+                    const int targetIndex = m_cityStack->currentIndex() + (delta > 0 ? -1 : 1);
+                    if (targetIndex >= 0 && targetIndex < m_cityStack->count()) {
+                        onCityPageActivated(targetIndex);
+                    }
+                }
+                return true;
+            }
+            default:
+                break;
+            }
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 //菜单「刷新间隔」变更：重启自动刷新定时器

@@ -23,10 +23,25 @@
 # - 托盘应用的常驻托盘图标下线（由 Plasmoid 取代），应用本体保留
 # 3.1.2-4：小部件默认城市改为按公网 IP 自动定位（geoip.ubuntu.com 主源、
 # myip.ipip.net 备源，均无需凭据），手动选择后固定使用配置值，可随时恢复自动
+# 3.1.2-5：多城市切换：App 实况区改为左右滑动轮播、小部件顶部城市名改为 tab 页；
+# 城市列表与自动定位开关统一到共享 gsettings（citylist / 新增 autolocate），
+# App 与小部件读写同一份，任一侧增删/切换城市两侧实时同步
+# 3.1.2-6：修复自动定位入口不一致：App 自动页与小部件自动 tab 始终带「·自动」
+# 标记；去掉小部件右键菜单与 Plasma 内置「配置天气…」重复的「设置」动作
+# 3.1.2-7：IP 定位链路统一为 geoip.ubuntu.com -> myip.ipip.net（弃用 pconline+高德，
+# pconline 常被 WAF 拒、高德 key 配额易超限）；浏览/添加手动城市不再关闭自动定位，
+# 自动定位保持为当前城市（App 滑动浏览与小部件 tab 点击均不改变 autolocate，
+# 仅菜单/自动定位 tab 显式切换；小部件不再因浏览手动城市重排共享 citylist）
+# 3.1.2-8：收藏城市对话框「当前城市」卡片改为显示主程序实际当前城市（自动定位时
+# 即自动定位城市），与主窗口一致，覆盖其仅以 citylist[0] 为当前城市的旧逻辑
+# 3.1.2-9：自动定位开启时，把实际当前城市插到收藏城市简报最前面（strList[0]=当前城市、
+# citylist 各城市按收藏城市显示），修复 CityCollectionWidget 首城市被当前城市占用而不显示的问题
+# 3.1.2-10：收藏对话框「当前城市」卡片在自动定位开启时标注「·自动」（如「长沙 · 自动」），
+# 与主窗口当前城市显示一致
 
 pkgname=indicator-china-weather
 pkgver=3.1.2
-pkgrel=28
+pkgrel=34
 pkgdesc="Indicator that displays China weather information (with a Plasma 6 weather widget)"
 arch=('x86_64')
 license=('GPL')

@@ -37,6 +37,16 @@ AddCityAction::AddCityAction(QWidget *parent) : QAction(parent)
 //        qDebug()<<"城市名称:"<<cityName;
 //    });
 }
+//转发主程序当前实际城市天气到收藏对话框「当前城市」卡片；收藏对话框尚未创建时缓存，
+//创建后（addCityClick）再应用，保证卡片显示与主程序当前城市一致
+void AddCityAction::setCurrentCityWeather(const ObserveWeather &weather)
+{
+    m_pendingCurrentCity = weather;
+    if (m_citycollectionwidget) {
+        m_citycollectionwidget->setCurrentCityWeather(weather);
+    }
+}
+
 void AddCityAction::addCityClick()
 {
    
@@ -59,6 +69,9 @@ void AddCityAction::addCityClick()
 
         //接收来自主窗口的天气数据，再发送到收藏城市列表窗口
         connect(this, SIGNAL(requestSetCityWeather(QString)), m_citycollectionwidget, SLOT(onRequestSetCityWeather(QString)));
+
+        //应用主程序当前实际城市天气到「当前城市」卡片（创建前已由 setCurrentCityWeather 缓存）
+        m_citycollectionwidget->setCurrentCityWeather(m_pendingCurrentCity);
 
         //收到关闭窗口的消息
         connect(m_citycollectionwidget, &CityCollectionWidget::requestChangeWidgetState, this, [=] () {

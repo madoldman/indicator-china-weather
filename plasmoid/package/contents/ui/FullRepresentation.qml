@@ -1,6 +1,6 @@
 /*
- * 弹出面板完整形态：城市名、实况天气（大温度/图标/描述/风/湿度/体感）、
- * 7 天预报、空气质量（AQI + 类别）与 6 项生活指数。
+ * 弹出面板完整形态：城市页签（自动定位 + 手动城市切换）、实况天气（大温度/
+ * 图标/描述/风/湿度/体感）、7 天预报、空气质量（AQI + 类别）与 6 项生活指数。
  *
  * 面板的弹出与锚定完全由 Plasma 原生完成（PlasmoidItem 的
  * fullRepresentation 自动在部件位置弹出），本组件不含任何坐标/定位代码。
@@ -75,31 +75,81 @@ PlasmaExtras.Representation {
         anchors.fill: parent
         spacing: Kirigami.Units.smallSpacing
 
-        // 1) 顶栏：城市名 + 空气质量徽标
+        // 1) 顶栏：城市页签（可横向滚动）+「+」添加城市 + 空气质量徽标
         RowLayout {
             Layout.leftMargin: Kirigami.Units.largeSpacing
             Layout.rightMargin: Kirigami.Units.largeSpacing
             Layout.topMargin: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
 
-            PlasmaComponents3.Label {
-                text: {
-                    var name = root.weatherClient.activeCityName ?? ""
-                    if (name.length === 0) {
-                        name = (root.weatherClient.locating ?? false) ? i18n("正在定位…") : i18n("天气")
+            // 城市页签：页 0 = 自动定位（IP 解析出的城市名），其余 = 手动城市
+            // （共享 gsettings citylist，最多约 9 个，超出宽度时横向滚动）；
+            // 活动页高亮加粗，点击即切换当前城市
+            PlasmaComponents3.ScrollView {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                implicitHeight: Kirigami.Units.gridUnit * 1.9
+
+                ListView {
+                    id: cityTabsView
+                    orientation: ListView.Horizontal
+                    clip: true
+                    spacing: Kirigami.Units.smallSpacing
+                    model: root.weatherClient.cityTabs ?? []
+
+                    delegate: Item {
+                        id: cityTab
+
+                        // 页 0 定位中显示「正在定位…」，成功后由后端替换为城市名
+                        readonly property bool isActive: index === root.weatherClient.activeCityIndex
+                        readonly property bool locatingNow: modelData.isAuto
+                                                             && (root.weatherClient.locating ?? false)
+
+                        implicitWidth: tabLabel.implicitWidth + Kirigami.Units.largeSpacing
+                        implicitHeight: Kirigami.Units.gridUnit * 1.7
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Kirigami.Units.smallSpacing
+                            color: cityTab.isActive
+                                   ? Kirigami.Theme.highlightColor
+                                   : (tabMouse.containsMouse
+                                          ? Qt.rgba(Kirigami.Theme.textColor.r,
+                                                    Kirigami.Theme.textColor.g,
+                                                    Kirigami.Theme.textColor.b, 0.1)
+                                          : "transparent")
+                        }
+
+                        PlasmaComponents3.Label {
+                            id: tabLabel
+                            anchors.centerIn: parent
+                            text: cityTab.locatingNow ? i18n("正在定位…")
+                                                      : (modelData.name ?? "")
+                            font.bold: cityTab.isActive
+                            font.pixelSize: Kirigami.Units.gridUnit * 0.8
+                            color: cityTab.isActive ? Kirigami.Theme.highlightedTextColor
+                                                    : Kirigami.Theme.textColor
+                            elide: Text.ElideRight
+                        }
+
+                        MouseArea {
+                            id: tabMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.weatherClient.setActiveCityIndex(index)
+                        }
                     }
-                    if (root.weatherClient.autoMode ?? false) {
-                        name += i18n("·自动")
-                    }
-                    return name
                 }
-                font.pixelSize: Kirigami.Units.gridUnit * 1.1
-                font.bold: true
-                color: Kirigami.Theme.textColor
             }
 
-            Item {
-                Layout.fillWidth: true
+            // 打开小部件配置对话框管理城市（main.qml 提供的统一入口）
+            PlasmaComponents3.ToolButton {
+                icon.name: "list-add"
+                text: i18n("添加城市")
+                display: PlasmaComponents3.ToolButton.IconOnly
+                Layout.alignment: Qt.AlignVCenter
+                onClicked: root.openConfig()
             }
 
             Rectangle {
