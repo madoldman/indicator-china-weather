@@ -404,7 +404,7 @@ void WeatherClient::fetchAll(const QString &locationId)
 
     clearError();
     m_requestLocationId = locationId;
-    m_activeReplies = 4;
+    m_activeReplies = 5;
     m_loading = true;
     emit loadingChanged();
 
@@ -414,6 +414,9 @@ void WeatherClient::fetchAll(const QString &locationId)
           [this](const QJsonObject &root) { parseNow(root); });
     fetch(QStringLiteral("/v7/weather/7d"), QString(),
           [this](const QJsonObject &root) { parseDaily(root); });
+    // 24 小时逐小时预报（hourly 数组，每项为 1 小时预报）
+    fetch(QStringLiteral("/v7/weather/24h"), QString(),
+          [this](const QJsonObject &root) { parseHourly(root); });
     fetch(QStringLiteral("/v7/air/now"), QString(),
           [this](const QJsonObject &root) { parseAir(root); });
     fetch(QStringLiteral("/v7/indices/1d"), QStringLiteral("0"),
@@ -707,6 +710,30 @@ void WeatherClient::parseDaily(const QJsonObject &root)
     }
     m_daily = list;
     emit dailyChanged();
+}
+
+void WeatherClient::parseHourly(const QJsonObject &root)
+{
+    const QJsonArray hourly = root.value(QStringLiteral("hourly")).toArray();
+    if (hourly.isEmpty()) {
+        return;
+    }
+
+    QVariantList list;
+    list.reserve(hourly.size());
+    for (const QJsonValue &value : hourly) {
+        const QJsonObject h = value.toObject();
+        QVariantMap item;
+        item.insert(QStringLiteral("time"), h.value(QStringLiteral("fxTime")).toString());
+        item.insert(QStringLiteral("temp"), h.value(QStringLiteral("temp")).toString());
+        item.insert(QStringLiteral("icon"), h.value(QStringLiteral("icon")).toString());
+        item.insert(QStringLiteral("text"), h.value(QStringLiteral("text")).toString());
+        item.insert(QStringLiteral("windDir"), h.value(QStringLiteral("windDir")).toString());
+        item.insert(QStringLiteral("windScale"), h.value(QStringLiteral("windScale")).toString());
+        list.append(item);
+    }
+    m_hourly = list;
+    emit hourlyChanged();
 }
 
 void WeatherClient::parseAir(const QJsonObject &root)

@@ -21,6 +21,12 @@ PlasmaExtras.Representation {
 
     readonly property bool isNight: IconUtil.isNightHour(new Date().getHours())
 
+    // 7 天预报的今天（index 0）项；尚无数据时为 null，供「今天」高亮行安全读取
+    readonly property var today: (root.weatherClient.daily ?? []).length > 0
+                                 ? root.weatherClient.daily[0] : null
+    // 是否已有 7 天预报数据（今天行/小时条/6 天网格的显示开关）
+    readonly property bool hasDailyData: (root.weatherClient.daily ?? []).length > 0
+
     // 生活指数 4 列等宽：按面板宽度均分（减去左右边距与 3 个列间距），
     // 避免「空气指数」这类长名称撑宽单列、挤压其它列
     readonly property real indexCellWidth: (Kirigami.Units.gridUnit * 27
@@ -96,6 +102,29 @@ PlasmaExtras.Representation {
         var names = [i18n("周日"), i18n("周一"), i18n("周二"), i18n("周三"),
                      i18n("周四"), i18n("周五"), i18n("周六")]
         return names[day.getDay()]
+    }
+
+    // 去掉今天（index 0）后的 6 天，供 2x3 网格使用
+    function dailyTail(list) {
+        var result = []
+        if (!list) return result
+        for (var i = 1; i < list.length; ++i) {
+            result.push(list[i])
+        }
+        return result
+    }
+
+    // 逐小时预报时间（和风 fxTime ISO 串，含 +08:00 时区偏移）-> "HH:MM"，
+    // 直接截取串中时刻，避免 JS Date 按本机时区换算导致城市时刻漂移
+    function hourLabel(fxTime) {
+        var s = fxTime || ""
+        return s.length >= 16 ? s.substring(11, 16) : s
+    }
+
+    // 逐小时预报图标：24h 接口返回的 icon 已自带昼夜形态（如夜间 150），
+    // 无需再按当前时刻补夜码
+    function hourlyIconSource(code) {
+        return Qt.resolvedUrl(IconUtil.iconPath(code, false))
     }
 
     ColumnLayout {
@@ -286,93 +315,240 @@ PlasmaExtras.Representation {
             Layout.rightMargin: Kirigami.Units.largeSpacing
         }
 
-        // 3) 7 天预报列表
+        // 3) 7 天预报：今天整行高亮；今天正下方为 24 小时逐小时预报（8 列 x 3 行网格，无横向滚动条）；
+        //    其余 6 天改为 2 列 3 行网格（每行显示 2 天）。面板高度不足时整块在其
+        //    ScrollView 内滚动
         PlasmaComponents3.ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.leftMargin: Kirigami.Units.smallSpacing
             Layout.rightMargin: Kirigami.Units.smallSpacing
 
-            ListView {
-                id: dailyView
+            Flickable {
+                id: dailyFlick
                 clip: true
-                spacing: Kirigami.Units.smallSpacing
-                model: root.weatherClient.daily ?? []
+                contentWidth: width
+                contentHeight: full.hasDailyData ? dailyColumn.implicitHeight : height
 
-                delegate: Item {
-                    width: ListView.view.width
-                    implicitHeight: Kirigami.Units.gridUnit * 2.6
-
-                    // 今日高亮、其余行浅色底，行与行之间由间距自然分隔
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.leftMargin: Kirigami.Units.smallSpacing
-                        anchors.rightMargin: Kirigami.Units.smallSpacing
-                        radius: Kirigami.Units.smallSpacing
-                        color: index === 0
-                               ? Kirigami.Theme.highlightColor
-                               : Qt.rgba(Kirigami.Theme.textColor.r,
-                                         Kirigami.Theme.textColor.g,
-                                         Kirigami.Theme.textColor.b, 0.07)
-                    }
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Kirigami.Units.largeSpacing
-                        anchors.rightMargin: Kirigami.Units.largeSpacing
-                        spacing: Kirigami.Units.largeSpacing
-
-                        ColumnLayout {
-                            spacing: Kirigami.Units.smallSpacing / 2
-                            PlasmaComponents3.Label {
-                                text: full.weekLabel(modelData.date ?? "", index)
-                                color: index === 0 ? Kirigami.Theme.highlightedTextColor
-                                                  : Kirigami.Theme.textColor
-                                font.pixelSize: Kirigami.Units.gridUnit * 0.8
-                                font.bold: index === 0
-                            }
-                            PlasmaComponents3.Label {
-                                text: modelData.date ?? ""
-                                color: index === 0 ? Kirigami.Theme.highlightedTextColor
-                                                  : Kirigami.Theme.disabledTextColor
-                                font.pixelSize: Kirigami.Units.gridUnit * 0.65
-                            }
-                        }
-
-                        Image {
-                            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                            Layout.preferredHeight: Layout.preferredWidth
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
-                            source: full.iconSource(modelData.iconDay)
-                        }
-
-                        PlasmaComponents3.Label {
-                            text: modelData.textDay ?? ""
-                            color: index === 0 ? Kirigami.Theme.highlightedTextColor
-                                              : Kirigami.Theme.textColor
-                            font.pixelSize: Kirigami.Units.gridUnit * 0.8
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
-
-                        PlasmaComponents3.Label {
-                            text: (modelData.tempMin ?? "") + " ~ "
-                                  + (modelData.tempMax ?? "") + "°C"
-                            color: index === 0 ? Kirigami.Theme.highlightedTextColor
-                                              : Kirigami.Theme.textColor
-                            font.pixelSize: Kirigami.Units.gridUnit * 0.8
-                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-                }
-
+                // 空态提示（无 7 天预报数据时居中显示）
                 PlasmaComponents3.Label {
                     anchors.centerIn: parent
-                    visible: dailyView.count === 0
+                    visible: !full.hasDailyData
                     text: root.weatherClient.loading ?? false ? i18n("正在获取天气数据…") : i18n("暂无预报数据")
                     color: Kirigami.Theme.disabledTextColor
+                }
+
+                ColumnLayout {
+                    id: dailyColumn
+                    width: dailyFlick.width
+                    visible: full.hasDailyData
+                    spacing: Kirigami.Units.smallSpacing
+
+                    // 3.1) 今天：整行高亮卡片（保持原「今日高亮」风格）
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: Kirigami.Units.gridUnit * 2.6
+                        radius: Kirigami.Units.smallSpacing
+                        color: Kirigami.Theme.highlightColor
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Kirigami.Units.largeSpacing
+                            anchors.rightMargin: Kirigami.Units.largeSpacing
+                            spacing: Kirigami.Units.largeSpacing
+
+                            ColumnLayout {
+                                spacing: Kirigami.Units.smallSpacing / 2
+                                PlasmaComponents3.Label {
+                                    text: full.today ? full.weekLabel(full.today.date ?? "", 0) : ""
+                                    color: Kirigami.Theme.highlightedTextColor
+                                    font.pixelSize: Kirigami.Units.gridUnit * 0.8
+                                    font.bold: true
+                                }
+                                PlasmaComponents3.Label {
+                                    text: full.today ? (full.today.date ?? "") : ""
+                                    color: Kirigami.Theme.highlightedTextColor
+                                    font.pixelSize: Kirigami.Units.gridUnit * 0.65
+                                }
+                            }
+
+                            Image {
+                                Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                                Layout.preferredHeight: Layout.preferredWidth
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                                source: full.today ? full.iconSource(full.today.iconDay) : ""
+                            }
+
+                            PlasmaComponents3.Label {
+                                Layout.fillWidth: true
+                                text: full.today ? (full.today.textDay ?? "") : ""
+                                color: Kirigami.Theme.highlightedTextColor
+                                font.pixelSize: Kirigami.Units.gridUnit * 0.8
+                                elide: Text.ElideRight
+                            }
+
+                            PlasmaComponents3.Label {
+                                text: full.today
+                                      ? (full.today.tempMin ?? "") + " ~ "
+                                        + (full.today.tempMax ?? "") + "°C" : ""
+                                color: Kirigami.Theme.highlightedTextColor
+                                font.pixelSize: Kirigami.Units.gridUnit * 0.8
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+
+                    // 3.2) 24 小时逐小时预报：8 列 x 3 行网格一屏展示（无横向滚动条）
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing / 2
+
+                        PlasmaComponents3.Label {
+                            Layout.leftMargin: Kirigami.Units.smallSpacing
+                            Layout.rightMargin: Kirigami.Units.smallSpacing
+                            text: i18n("24 小时逐小时预报")
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pixelSize: Kirigami.Units.gridUnit * 0.7
+                            font.bold: true
+                        }
+
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 8
+                            columnSpacing: Kirigami.Units.smallSpacing
+                            rowSpacing: Kirigami.Units.smallSpacing
+
+                            Repeater {
+                                model: root.weatherClient.hourly ?? []
+
+                                delegate: Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Kirigami.Units.gridUnit * 2.8
+                                    radius: Kirigami.Units.smallSpacing
+                                    color: Qt.rgba(Kirigami.Theme.textColor.r,
+                                                  Kirigami.Theme.textColor.g,
+                                                  Kirigami.Theme.textColor.b, 0.07)
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: Kirigami.Units.smallSpacing / 2
+
+                                        PlasmaComponents3.Label {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            text: full.hourLabel(modelData.time ?? "")
+                                            color: Kirigami.Theme.disabledTextColor
+                                            font.pixelSize: Kirigami.Units.gridUnit * 0.65
+                                        }
+
+                                        Image {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                                            Layout.preferredHeight: Layout.preferredWidth
+                                            fillMode: Image.PreserveAspectFit
+                                            smooth: true
+                                            source: full.hourlyIconSource(modelData.icon)
+                                        }
+
+                                        PlasmaComponents3.Label {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            text: (modelData.temp ?? "") + "°"
+                                            color: Kirigami.Theme.textColor
+                                            font.pixelSize: Kirigami.Units.gridUnit * 0.75
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 空态提示（无逐小时预报数据时占满网格区域居中显示）
+                            PlasmaComponents3.Label {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: (root.weatherClient.hourly ?? []).length === 0
+                                text: i18n("暂无逐小时预报数据")
+                                color: Kirigami.Theme.disabledTextColor
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+
+                    // 3.3) 其余 6 天：2 列 3 行网格，每行显示 2 天（今天外的每一天一格）
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: Kirigami.Units.smallSpacing
+                        rowSpacing: Kirigami.Units.smallSpacing
+
+                        Repeater {
+                            model: full.dailyTail(root.weatherClient.daily)
+
+                            delegate: Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: Kirigami.Units.gridUnit * 2.6
+                                radius: Kirigami.Units.smallSpacing
+                                color: Qt.rgba(Kirigami.Theme.textColor.r,
+                                              Kirigami.Theme.textColor.g,
+                                              Kirigami.Theme.textColor.b, 0.07)
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Kirigami.Units.smallSpacing
+                                    anchors.rightMargin: Kirigami.Units.smallSpacing
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    ColumnLayout {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        spacing: Kirigami.Units.smallSpacing / 2
+                                        PlasmaComponents3.Label {
+                                            text: full.weekLabel(modelData.date ?? "", index + 1)
+                                            color: Kirigami.Theme.textColor
+                                            font.pixelSize: Kirigami.Units.gridUnit * 0.75
+                                            font.bold: true
+                                        }
+                                        PlasmaComponents3.Label {
+                                            text: modelData.date ?? ""
+                                            color: Kirigami.Theme.disabledTextColor
+                                            font.pixelSize: Kirigami.Units.gridUnit * 0.6
+                                        }
+                                    }
+
+                                    Image {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                                        Layout.preferredHeight: Layout.preferredWidth
+                                        fillMode: Image.PreserveAspectFit
+                                        smooth: true
+                                        source: full.iconSource(modelData.iconDay)
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Layout.alignment: Qt.AlignVCenter
+                                        spacing: Kirigami.Units.smallSpacing / 2
+                                        PlasmaComponents3.Label {
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            text: modelData.textDay ?? ""
+                                            color: Kirigami.Theme.textColor
+                                            font.pixelSize: Kirigami.Units.gridUnit * 0.75
+                                            elide: Text.ElideRight
+                                        }
+                                        PlasmaComponents3.Label {
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            text: (modelData.tempMin ?? "") + " ~ "
+                                                  + (modelData.tempMax ?? "") + "°C"
+                                            color: Kirigami.Theme.textColor
+                                            font.pixelSize: Kirigami.Units.gridUnit * 0.7
+                                            elide: Text.ElideRight
+                                            horizontalAlignment: Text.AlignRight
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

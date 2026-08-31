@@ -37,7 +37,7 @@ class QTimer;
 /*
  * Plasma 小部件（org.madoldman.chinaweather）的数据后端。
  *
- * 直连和风天气 API v7 的四个请求（now / 7d / air / indices），与托盘应用
+ * 直连和风天气 API v7 的五个请求（now / 7d / 24h / air / indices），与托盘应用
  * src/weatherworker.cpp 的端点、认证与字段映射保持一致，但为独立精简实现，
  * 不与托盘应用的 worker/信号体系耦合。
  *
@@ -89,6 +89,9 @@ class WeatherClient : public QObject
 
     // 7 天预报（/v7/weather/7d），元素为 QVariantMap
     Q_PROPERTY(QVariantList daily READ daily NOTIFY dailyChanged)
+
+    // 24 小时逐小时预报（/v7/weather/24h），元素为 QVariantMap（含 time/temp/icon/text/windDir/windScale）
+    Q_PROPERTY(QVariantList hourly READ hourly NOTIFY hourlyChanged)
 
     // 空气质量（/v7/air/now）
     Q_PROPERTY(QString airAqi READ airAqi NOTIFY airChanged)
@@ -151,6 +154,7 @@ public:
     QString feelsLike() const { return m_feelsLike; }
     QString updateTime() const { return m_updateTime; }
     QVariantList daily() const { return m_daily; }
+    QVariantList hourly() const { return m_hourly; }
     QString airAqi() const { return m_airAqi; }
     QString airCategory() const { return m_airCategory; }
     QVariantList indices() const { return m_indices; }
@@ -169,6 +173,7 @@ signals:
     void errorStringChanged();
     void nowChanged();
     void dailyChanged();
+    void hourlyChanged();
     void airChanged();
     void indicesChanged();
 
@@ -208,6 +213,7 @@ private:
 
     void parseNow(const QJsonObject &root);
     void parseDaily(const QJsonObject &root);
+    void parseHourly(const QJsonObject &root);
     void parseAir(const QJsonObject &root);
     void parseIndices(const QJsonObject &root);
 
@@ -259,6 +265,7 @@ private:
     QString m_feelsLike;
     QString m_updateTime;
     QVariantList m_daily;
+    QVariantList m_hourly;
     QString m_airAqi;
     QString m_airCategory;
     QVariantList m_indices;
