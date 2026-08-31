@@ -1,7 +1,7 @@
 pkgbase = indicator-china-weather
 	pkgdesc = Indicator that displays China weather information
 	pkgver = 3.1.2
-	pkgrel = 2
+	pkgrel = 1
 	url = https://github.com/madoldman/indicator-china-weather
 	arch = x86_64
 	license = GPL

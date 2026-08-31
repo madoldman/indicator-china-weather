@@ -6,6 +6,9 @@
 # 包含应用源码与打包文件，打包的就是当前检出的这份代码，构建全程不访问网络。
 # 代码更新方式：将改动提交/合入 archlinux 分支后，在本目录重跑 makepkg 即可；
 # pkgver 为静态版本号（与 debian/changelog 保持一致），无需更新校验和。
+# pkgrel 为 makepkg 必填字段；本 PKGBUILD 仅用于本地打包（不同步 AUR），故
+# pkgrel 取构建时间戳自动递增（如 3.1.2-20260831151932），每次打包产物版本
+# 都会高于目标机已装版本，pacman 即可识别为升级；无需手动改、无需提交 git。
 # 参照 Arch Linux 官方打包仓库适配：
 # https://gitlab.archlinux.org/archlinux/packaging/packages/indicator-china-weather/
 #
@@ -41,7 +44,7 @@
 
 pkgname=indicator-china-weather
 pkgver=3.1.2
-pkgrel=35
+pkgrel="$(date +%Y%m%d%H%M%S)"
 pkgdesc="Indicator that displays China weather information (with a Plasma 6 weather widget)"
 arch=('x86_64')
 license=('GPL')
