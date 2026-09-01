@@ -108,7 +108,10 @@ void WeatherClient::setCityName(const QString &cityName)
 // 允许尾随逗号（如 "101010100,"）；空串 / "," = 无手动城市
 
 // 旧 kcfg 单城市配置 -> 共享 gsettings 的一次性迁移：仅当 citylist 仍是
-// 出厂默认（北京）且 kcfg 配置了非空城市时导入，避免覆盖应用侧已保存的城市
+// 出厂默认（北京）且 kcfg 配置了非默认城市时导入，避免覆盖应用侧已保存的城市；
+// 旧配置仍是出厂默认北京时无需迁移——此时写回的 citylist 与默认值完全相同，
+// 「citylist 已非默认」的幂等判断永远不成立，会每次重启重复迁移并把
+// autolocate 翻回 false，导致重启后自动定位失效
 void WeatherClient::migrateLegacyCity()
 {
     if (m_legacyMigrated) {
@@ -118,6 +121,9 @@ void WeatherClient::migrateLegacyCity()
     if (!m_gsettings || m_cityId.isEmpty()
         || !m_gsettings->keys().contains(QStringLiteral("citylist"))) {
         return;
+    }
+    if (m_cityId == QStringLiteral("101010100")) {
+        return; // 出厂默认北京：没有用户自定义城市需要迁移，保持 autolocate 不变
     }
     QString stored = m_gsettings->get(QStringLiteral("citylist")).toString().trimmed();
     while (stored.endsWith(QLatin1Char(','))) {
