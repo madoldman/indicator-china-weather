@@ -399,7 +399,8 @@ PlasmaExtras.Representation {
                         }
                     }
 
-                    // 3.2) 24 小时逐小时预报：8 列 x 3 行网格一屏展示（无横向滚动条）
+                    // 3.2) 24 小时逐小时预报：8 列 x 3 行网格一屏展示（无横向滚动条）；
+                    //      格子高度随内容（时间/图标/温度）自适应，见 delegate 内注释
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing / 2
@@ -424,13 +425,20 @@ PlasmaExtras.Representation {
 
                                 delegate: Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: Kirigami.Units.gridUnit * 2.8
+                                    // 高度不写死 gridUnit * 2.8：时间/图标/温度三项纵向
+                                    // 总高在不同 DPI/字号组合下会超过 2.8gu（图标为固定
+                                    // 像素尺寸，不随 gridUnit 等比缩放），改为按内部
+                                    // ColumnLayout 隐式高度 + 上下各留 smallSpacing
+                                    // 内边距，避免文字溢出圆角背景
+                                    Layout.preferredHeight: hourlyContent.implicitHeight
+                                                            + Kirigami.Units.smallSpacing * 2
                                     radius: Kirigami.Units.smallSpacing
                                     color: Qt.rgba(Kirigami.Theme.textColor.r,
                                                   Kirigami.Theme.textColor.g,
                                                   Kirigami.Theme.textColor.b, 0.07)
 
                                     ColumnLayout {
+                                        id: hourlyContent
                                         anchors.centerIn: parent
                                         spacing: Kirigami.Units.smallSpacing / 2
 
