@@ -62,6 +62,13 @@ bool isV7Success(const QJsonObject &root)
     return root.value(QStringLiteral("code")).toString() == QStringLiteral("200");
 }
 
+// gsettings-qt6 的 changed 信号把多词键归一化为驼峰（refresh-interval -> refreshInterval），
+// 而 get/set 用 schema 原键名；比较前统一去掉 '-' 并转小写，避免键名风格差异导致分支失配
+QString normalizedGsettingsKey(const QString &key)
+{
+    return QString(key).remove(QLatin1Char('-')).toLower();
+}
+
 } // namespace
 
 WeatherClient::WeatherClient(QObject *parent)
@@ -385,7 +392,7 @@ void WeatherClient::applyRefreshInterval(int minutes)
 
 void WeatherClient::onGSettingsChanged(const QString &key)
 {
-    if (key == QLatin1String("refresh-interval") && m_gsettings) {
+    if (normalizedGsettingsKey(key) == QLatin1String("refreshinterval") && m_gsettings) {
         const int stored = m_gsettings->get(QStringLiteral("refresh-interval")).toInt();
         if (stored > 0) {
             applyRefreshInterval(stored);
@@ -394,7 +401,8 @@ void WeatherClient::onGSettingsChanged(const QString &key)
     }
     // 城市列表/自动定位变更（应用侧或另一小部件实例修改）：重建页签，
     // 实际生效的城市变化时立即刷新
-    if (key == QLatin1String("citylist") || key == QLatin1String("autolocate")) {
+    if (normalizedGsettingsKey(key) == QLatin1String("citylist")
+        || normalizedGsettingsKey(key) == QLatin1String("autolocate")) {
         const QString previousLocationId = currentLocationId();
         rebuildCityTabs();
         if (currentLocationId() != previousLocationId) {

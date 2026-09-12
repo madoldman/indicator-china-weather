@@ -25,6 +25,15 @@
 
 int tempNumsOfCityInSearchResultList = 0;//搜索列表中城市数量
 
+namespace {
+// gsettings-qt6 的 changed 信号把多词键归一化为驼峰（refresh-interval -> refreshInterval），
+// 而 get/set 用 schema 原键名；比较前统一去掉 '-' 并转小写，避免键名风格差异导致分支失配
+QString normalizedGsettingsKey(const QString &key)
+{
+    return QString(key).remove(QLatin1Char('-')).toLower();
+}
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::MainWindow)
@@ -171,7 +180,7 @@ MainWindow::MainWindow(QWidget *parent) :
     if (QGSettings::isSchemaInstalled(APPDATA)) {
         auto *setting = new QGSettings(QByteArray(APPDATA), QByteArray(), this);
         connect(setting, &QGSettings::changed, this, [this](const QString &key) {
-            if (key != QLatin1String("refresh-interval") || !m_refreshweather) {
+            if (normalizedGsettingsKey(key) != QLatin1String("refreshinterval") || !m_refreshweather) {
                 return;
             }
             QGSettings s(APPDATA);

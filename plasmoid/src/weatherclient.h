@@ -229,7 +229,9 @@ private:
 
     QString m_cityId;   // 旧 kcfg 单城市配置（仅一次性迁移用，非数据源）
     QString m_cityName; // 旧 kcfg 城市名（同上）
-    int m_refreshInterval = 30;
+    // 仅 schema 未安装（isSchemaInstalled 为假）时的兜底默认，须与
+    // data/org.china-weather-data.gschema.xml 的 refresh-interval 默认值一致
+    int m_refreshInterval = 20;
 
     // 多城市状态（缓存自共享 gsettings，重建见 rebuildCityTabs）
     bool m_autolocate = true;        // gsettings autolocate（键缺失时为内存默认）
