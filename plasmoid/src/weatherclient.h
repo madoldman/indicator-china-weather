@@ -193,6 +193,11 @@ private:
     void requestIpipLocation();
     void finishIpLocation(const QString &city, const QString &province, bool englishName);
     void finishIpLookupFailed();
+    // IP 定位失败的退避重试：仅网络/解析失败时调度（30s 起逐次翻倍封顶 300s），
+    // 定位成功或离开自动定位后停止并复位
+    bool scheduleIpRetry();
+    void retryIpLocation();
+    void stopIpRetry();
     // 城市/区县名 -> CSV LocationID 匹配（中文或英文名）
     bool matchCity(const QString &name, bool englishName, QString *matchedId, QString *matchedName);
     // LocationID -> 城市中文名（本地城市表查表；未命中回退 addCity 携带的兜底名）
@@ -220,7 +225,7 @@ private:
     // 本地城市表（懒加载）
     void ensureCityTableLoaded();
     void onGSettingsChanged(const QString &key); // gsettings 变更回流（间隔/城市列表/自动定位）
-    void applyRefreshInterval(int minutes);      // 应用新间隔并重建定时器
+    void applyRefreshInterval(int minutes);      // 应用间隔并确保周期定时器在运行（同值调用亦会补建缺失的定时器）
 
     QString m_cityId;   // 旧 kcfg 单城市配置（仅一次性迁移用，非数据源）
     QString m_cityName; // 旧 kcfg 城市名（同上）
@@ -240,6 +245,11 @@ private:
     QString m_ipCityId;      // 解析出的和风 LocationID
     QString m_ipCityName;   // 解析出的城市名（中文，供展示）
     QString m_ipProvince;   // 解析出的省份（仅展示用）
+
+    // IP 定位失败的退避重试状态：m_retryDelaySeconds 为当前退避延迟（0 = 未在
+    // 退避，下次从 30s 起）；m_retryTimer 单次触发，以 this 为 parent 随对象释放
+    QTimer *m_retryTimer = nullptr;
+    int m_retryDelaySeconds = 0;
 
     // 当前实际用于请求的 LocationID（配置城市或 IP 解析结果）
     QString m_requestLocationId;

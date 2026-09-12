@@ -51,6 +51,11 @@ constexpr char kDevApiHost[] = "https://devapi.qweather.com";
 constexpr char kPackagedCityCsv[] =
     "/usr/share/plasma/plasmoids/org.madoldman.chinaweather/contents/data/china-city-list.csv";
 
+// IP 定位失败后的退避重试节奏：首次 30s，逐次翻倍封顶 300s；不设次数上限，
+// 网络长时间未就绪时持续自愈，封顶保证退避到位后不再产生高频请求
+constexpr int kIpRetryInitialSeconds = 30;
+constexpr int kIpRetryMaxSeconds = 300;
+
 // 和风 v7 响应的 code 字段为字符串，"200" 表示成功
 bool isV7Success(const QJsonObject &root)
 {
@@ -63,6 +68,12 @@ WeatherClient::WeatherClient(QObject *parent)
     : QObject(parent)
     , m_nam(new QNetworkAccessManager(this))
 {
+    // IP 定位失败的退避重试定时器：单次触发，调度与节奏见 scheduleIpRetry；
+    // 必须先于 rebuildCityTabs 创建（后者在非自动定位时会停止未决重试）
+    m_retryTimer = new QTimer(this);
+    m_retryTimer->setSingleShot(true);
+    connect(m_retryTimer, &QTimer::timeout, this, &WeatherClient::retryIpLocation);
+
     // 和风天气凭据从环境变量读取（缺失时 refresh() 会置错误状态，不发请求）。
     // 凭据 ID（QWEATHER_CREDENTIAL_ID）仅用于 JWT 认证，API Key 方式不使用，这里不读取。
     m_apiKey = qEnvironmentVariable("QWEATHER_API_KEY").trimmed();
@@ -200,6 +211,11 @@ void WeatherClient::rebuildCityTabs()
     if (activeCityName() != previousName) {
         emit activeCityNameChanged();
     }
+    // 非自动定位（本侧切换或应用侧经 gsettings 回流改写）：IP 定位重试不再
+    // 有意义，停止未决重试并复位退避节奏
+    if (!m_autolocate) {
+        stopIpRetry();
+    }
 }
 
 // 读 autolocate；旧 schema 未安装该键时按当前内存值容错（初始默认 true）
@@ -244,6 +260,9 @@ void WeatherClient::setActiveCityIndex(int index)
     // 不改变自动定位状态——自动定位仍是配置的当前城市，浏览不影响 App 的当前城市
     m_activeCityIndex = index;
     emit activeCityIndexChanged();
+    // 用户明确驻留手动城市：停止未决的 IP 定位重试，避免后台继续请求 IP 接口；
+    // 回到自动页时 refresh() 会重新发起定位，失败后按退避节奏重建重试
+    stopIpRetry();
     refresh();
 }
 
@@ -341,13 +360,18 @@ void WeatherClient::setRefreshInterval(int minutes)
 
 void WeatherClient::applyRefreshInterval(int minutes)
 {
-    if (minutes <= 0 || minutes == m_refreshInterval) {
+    // 值未变且周期定时器已在运行时无需处理；定时器缺失时（构造函数以 gsettings
+    // 读到的同值调用进来）仍要落到创建分支，否则整个会话没有周期刷新
+    if (minutes <= 0 || (minutes == m_refreshInterval && m_timer)) {
         return;
     }
-    m_refreshInterval = minutes;
-    emit refreshIntervalChanged();
+    // 定时器缺失但值未变（构造路径）时不能重复 emit，避免 QML 侧无意义的回流
+    if (minutes != m_refreshInterval) {
+        m_refreshInterval = minutes;
+        emit refreshIntervalChanged();
+    }
 
-    // 按新间隔重建定时器
+    // 按当前间隔创建/重建定时器（重建前先停掉旧的，避免双份周期刷新）
     if (m_timer) {
         m_timer->stop();
         m_timer->deleteLater();
@@ -507,6 +531,9 @@ void WeatherClient::finishIpLocation(const QString &city, const QString &provinc
     if (!matchCity(city, englishName, &matchedId, &matchedName)) {
         m_locating = false;
         emit locatingChanged();
+        // 城市表未命中并非网络问题，重试不会改变结果：取消未决重试即可，
+        // 不再调度新的重试
+        stopIpRetry();
         setError(QStringLiteral("公网 IP 定位到的城市（%1）未在本地城市表中找到，请手动选择城市。").arg(city));
         return;
     }
@@ -517,6 +544,9 @@ void WeatherClient::finishIpLocation(const QString &city, const QString &provinc
     m_ipResolved = true;
     m_locating = false;
     emit locatingChanged();
+    // 定位成功：退避重试完成使命，停止未决重试并复位节奏，下次网络故障从
+    // 初始延迟重新退避
+    stopIpRetry();
     emit activeCityNameChanged();
     // 自动定位页名称同步为解析出的城市名（页签模型页 0，带「·自动」标记）
     if (!m_cityTabs.isEmpty()) {
@@ -533,7 +563,53 @@ void WeatherClient::finishIpLookupFailed()
 {
     m_locating = false;
     emit locatingChanged();
-    setError(QStringLiteral("公网 IP 定位失败，请在小部件设置中手动选择城市。"));
+    // 网络/解析失败（区别于上面的城市表未命中）：调度退避重试，网络恢复后
+    // 自动自愈，无需用户展开面板或重启小部件；仅在自动定位模式下重试有意义，
+    // 提示文案据此区分「将自动重试」与「需手动选择」
+    if (scheduleIpRetry()) {
+        setError(QStringLiteral("公网 IP 定位失败，将自动重试；也可在小部件设置中手动选择城市。"));
+    } else {
+        setError(QStringLiteral("公网 IP 定位失败，请在小部件设置中手动选择城市。"));
+    }
+}
+
+// IP 定位失败后的退避重试调度：首次 30s，逐次翻倍封顶 300s（30→60→120→240→300…），
+// 不设次数上限——网络可能长时间未就绪，需持续自愈。仅在仍处于自动定位、尚未
+// 解析出城市且无定位请求在途时调度，任一条件不满足即放弃且不留悬挂定时器
+bool WeatherClient::scheduleIpRetry()
+{
+    if (!m_autolocate || m_ipResolved || m_locating) {
+        return false;
+    }
+    m_retryDelaySeconds = m_retryDelaySeconds <= 0
+                              ? kIpRetryInitialSeconds
+                              : qMin(m_retryDelaySeconds * 2, kIpRetryMaxSeconds);
+    // 单次定时器：重复调度时以新的退避延迟重新武装，替换旧的更短延迟
+    m_retryTimer->start(std::chrono::seconds(m_retryDelaySeconds));
+    return true;
+}
+
+// 退避重试触发点：等待期间状态可能已变化（已定位成功/已切手动城市），复核
+// 前置条件后再走既有的 startIpLocation（其内保留 m_locating 防重入），避免
+// 状态变化后仍发出无效的 IP 请求
+void WeatherClient::retryIpLocation()
+{
+    if (!m_autolocate || m_ipResolved || m_locating) {
+        return;
+    }
+    // 尝试期间离开错误态：由 locating 驱动「正在定位」的中性展示；若本次仍
+    // 失败，finishIpLookupFailed 会再次给出提示并调度下一轮
+    clearError();
+    startIpLocation();
+}
+
+// 停止未决的 IP 定位重试并复位退避节奏（定位成功、切手动城市/页签时调用）
+void WeatherClient::stopIpRetry()
+{
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
+    m_retryDelaySeconds = 0;
 }
 
 //城市/区县名 -> CSV LocationID 匹配：先精确匹配城市中文名（去掉“市”后缀），
