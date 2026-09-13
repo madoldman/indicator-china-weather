@@ -5,7 +5,8 @@
  * （org.china-weather-data.settings 的 citylist/autolocate，与应用侧同一份），
  * 经 managerClient 提供的 Q_INVOKABLE（setAutoLocate/addCity/removeCity）读写，
  * 修改即时生效并同步到应用与小部件。配置对话框是独立引擎，无法经 root 访问
- * 主界面的客户端实例，故各建一个 WeatherClient。
+ * 主界面的客户端实例，故各建一个 WeatherClient（均为 headless 模式，见下方
+ * 实例化处的注释）。
  *
  * cfg_cityId/cfg_cityName 为旧版 kcfg 单城市配置，已废弃（C++ 侧一次性迁移
  * 到共享 gsettings）；此处仅保留声明以消除 plasmashell 属性注入告警。
@@ -34,16 +35,21 @@ ColumnLayout {
     // 搜索结果（QVariantList，元素为 {id, name, province}）
     property var searchResults: []
 
-    // 仅用于本地城市表搜索的客户端实例（不发网络请求；配置对话框是
-    // 独立引擎，无法经 root 访问主界面的客户端）
+    // 配置对话框是独立 QML 引擎，无法经 root 访问主界面的客户端实例，故各建
+    // 一个 WeatherClient。两者均为 headless 模式（无 UI 消费者：不启动周期
+    // 定时器、refresh() 为空操作、不发起任何网络请求），仅用于读取状态与写
+    // 共享 gsettings；数据刷新统一由面板主实例经 gsettings changed 链路完成
     WeatherClient {
         id: citySearchClient
+        headless: true
     }
 
-    // 多城市管理客户端：读 cityTabs/activeCityIndex 展示当前状态，
-    // 经 setAutoLocate/addCity/removeCity 写共享 gsettings
+    // 多城市管理客户端：读 cityTabs/activeCityIndex/autoMode 展示当前状态，
+    // 经 setAutoLocate/addCity/removeCity 写共享 gsettings（管理操作本身不发
+    // 请求，写入后由主实例经 changed 信号刷新）
     WeatherClient {
         id: managerClient
+        headless: true
     }
 
     // 手动城市列表（cityTabs 去掉页 0 的自动定位项；
@@ -173,15 +179,19 @@ ColumnLayout {
             color: Kirigami.Theme.textColor
         }
 
-        // 预设档位与应用菜单一致，保证两侧状态永远一致；选择即生效
+        // 预设档位与应用菜单一致，保证两侧状态永远一致；选择即生效。
+        // gsettings 存在非预设值（如 15）时把当前值动态插入 model 作为兜底档
+        // （应用菜单同场景显示「N 分钟（当前）」），避免 ComboBox 回退显示成
+        // 「20 分钟」造成假显示
         PlasmaComponents3.ComboBox {
             id: intervalBox
             Layout.preferredWidth: Kirigami.Units.gridUnit * 8
-            model: [5, 10, 20, 30, 60]
-            currentIndex: {
-                var idx = model.indexOf(citySearchClient.refreshInterval)
-                return idx >= 0 ? idx : 2 // 历史遗留的非预设值回退显示 20 分钟
+            model: {
+                var presets = [5, 10, 20, 30, 60]
+                var current = citySearchClient.refreshInterval
+                return presets.indexOf(current) >= 0 ? presets : presets.concat([current])
             }
+            currentIndex: model.indexOf(citySearchClient.refreshInterval)
             onActivated: citySearchClient.refreshInterval = model[currentIndex]
         }
     }

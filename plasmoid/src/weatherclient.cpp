@@ -47,9 +47,14 @@ namespace {
 // 与托盘应用 data.h 保持一致的和风天气 v7 数据 API 主机
 constexpr char kDevApiHost[] = "https://devapi.qweather.com";
 
-// Plasmoid 包内城市表（由打包安装到系统小部件目录）
-constexpr char kPackagedCityCsv[] =
-    "/usr/share/plasma/plasmoids/org.madoldman.chinaweather/contents/data/china-city-list.csv";
+// Plasmoid 包内城市表（由打包安装到系统小部件目录）。绝对路径由 CMake 按
+// 安装前缀注入编译定义 CHINAWEATHER_PACKAGED_CITY_CSV；未注入时（脱离构建
+// 系统单独编译等场景）回退到默认 /usr 前缀
+#ifndef CHINAWEATHER_PACKAGED_CITY_CSV
+#define CHINAWEATHER_PACKAGED_CITY_CSV \
+    "/usr/share/plasma/plasmoids/org.madoldman.chinaweather/contents/data/china-city-list.csv"
+#endif
+constexpr char kPackagedCityCsv[] = CHINAWEATHER_PACKAGED_CITY_CSV;
 
 // IP 定位失败后的退避重试节奏：首次 30s，逐次翻倍封顶 300s；不设次数上限，
 // 网络长时间未就绪时持续自愈，封顶保证退避到位后不再产生高频请求
@@ -97,7 +102,11 @@ WeatherClient::WeatherClient(QObject *parent)
     }
     // 城市页签与活动页（citylist / autolocate；旧 schema 缺键时按默认值容错）
     rebuildCityTabs();
-    setRefreshInterval(m_refreshInterval);
+    // 构造路径只应用、不写回：setRefreshInterval 会经 qBound 钳制后把值写回
+    // gsettings——用户经 gsettings CLI 设置的 <5 或 >360 超范围值会被小部件在
+    // 每次加载时单方面改写为 5/360。这里直接按读到的值应用（创建周期定时器），
+    // 写回仅发生在用户显式选择间隔时（配置页走 setRefreshInterval）
+    applyRefreshInterval(m_refreshInterval);
 }
 
 void WeatherClient::setCityId(const QString &cityId)
@@ -219,9 +228,10 @@ void WeatherClient::rebuildCityTabs()
         emit activeCityNameChanged();
     }
     // 非自动定位（本侧切换或应用侧经 gsettings 回流改写）：IP 定位重试不再
-    // 有意义，停止未决重试并复位退避节奏
+    // 有意义，停止未决重试并复位退避节奏，同时放弃在途的 IP 定位请求
     if (!m_autolocate) {
         stopIpRetry();
+        abortIpLocation();
     }
 }
 
@@ -267,9 +277,12 @@ void WeatherClient::setActiveCityIndex(int index)
     // 不改变自动定位状态——自动定位仍是配置的当前城市，浏览不影响 App 的当前城市
     m_activeCityIndex = index;
     emit activeCityIndexChanged();
-    // 用户明确驻留手动城市：停止未决的 IP 定位重试，避免后台继续请求 IP 接口；
+    // 用户明确驻留手动城市：停止未决的 IP 定位重试，并放弃在途的 IP 定位请求
+    // （其完成回调经 finishIpLocation 的活动页复核也不会再拉取数据，这里主动
+    // abort + 复位 locating，避免后台继续请求 IP 接口、面板一直显示「正在定位…」）；
     // 回到自动页时 refresh() 会重新发起定位，失败后按退避节奏重建重试
     stopIpRetry();
+    abortIpLocation();
     refresh();
 }
 
@@ -357,8 +370,9 @@ QString WeatherClient::cityNameFromId(const QString &id)
 void WeatherClient::setRefreshInterval(int minutes)
 {
     const int clamped = qBound(5, minutes, 360);
-    // 写入 gsettings（单一数据源）：应用菜单与小部件任一侧修改都会经
-    // QGSettings::changed 回流到另一侧；随后立即应用一次，不依赖信号时序
+    // 用户显式选择路径（配置页）：写入 gsettings（单一数据源），应用菜单与
+    // 小部件任一侧修改都会经 QGSettings::changed 回流到另一侧；随后立即应用
+    // 一次，不依赖信号时序
     if (m_gsettings) {
         m_gsettings->set(QStringLiteral("refresh-interval"), clamped);
     }
@@ -367,15 +381,25 @@ void WeatherClient::setRefreshInterval(int minutes)
 
 void WeatherClient::applyRefreshInterval(int minutes)
 {
-    // 值未变且周期定时器已在运行时无需处理；定时器缺失时（构造函数以 gsettings
-    // 读到的同值调用进来）仍要落到创建分支，否则整个会话没有周期刷新
-    if (minutes <= 0 || (minutes == m_refreshInterval && m_timer)) {
+    if (minutes <= 0) {
         return;
     }
-    // 定时器缺失但值未变（构造路径）时不能重复 emit，避免 QML 侧无意义的回流
-    if (minutes != m_refreshInterval) {
+    // 值变化时先同步属性并通知（headless 实例同样同步：配置页的间隔下拉框
+    // 依赖该属性展示 gsettings 当前值）
+    const bool changed = minutes != m_refreshInterval;
+    if (changed) {
         m_refreshInterval = minutes;
         emit refreshIntervalChanged();
+    }
+    // headless 实例（配置对话框的辅助客户端）无 UI 消费者：不创建周期定时器，
+    // 也就永远不会周期性发起不可见的网络请求
+    if (m_headless) {
+        return;
+    }
+    // 定时器已在运行且值未变时无需处理；定时器缺失时（构造函数以 gsettings
+    // 读到的同值调用进来）仍要落到创建分支，否则整个会话没有周期刷新
+    if (!changed && m_timer) {
+        return;
     }
 
     // 按当前间隔创建/重建定时器（重建前先停掉旧的，避免双份周期刷新）
@@ -388,6 +412,26 @@ void WeatherClient::applyRefreshInterval(int minutes)
     m_timer->setInterval(std::chrono::minutes(m_refreshInterval));
     connect(m_timer, &QTimer::timeout, this, &WeatherClient::refresh);
     m_timer->start();
+}
+
+// headless（无 UI 消费者）切换：开启时停掉周期定时器，恢复时按当前间隔补建；
+// 网络请求的抑制统一在 refresh() 入口判断
+void WeatherClient::setHeadless(bool headless)
+{
+    if (headless == m_headless) {
+        return;
+    }
+    m_headless = headless;
+    emit headlessChanged();
+    if (m_headless) {
+        if (m_timer) {
+            m_timer->stop();
+            m_timer->deleteLater();
+            m_timer = nullptr;
+        }
+    } else {
+        applyRefreshInterval(m_refreshInterval);
+    }
 }
 
 void WeatherClient::onGSettingsChanged(const QString &key)
@@ -413,6 +457,11 @@ void WeatherClient::onGSettingsChanged(const QString &key)
 
 void WeatherClient::refresh()
 {
+    // headless 实例（配置对话框的辅助客户端）没有展示数据的界面：不发起任何
+    // 网络请求，数据刷新由面板主实例经 gsettings changed 链路统一完成
+    if (m_headless) {
+        return;
+    }
     if (m_apiKey.isEmpty()) {
         setError(QStringLiteral(
             "未设置 QWEATHER_API_KEY 环境变量，无法请求和风天气数据；配置方式见 README「和风天气凭据配置」章节。"));
@@ -424,6 +473,11 @@ void WeatherClient::refresh()
         if (m_ipResolved) {
             fetchAll(m_ipCityId);
         } else {
+            // 定位窗口内不再保留旧批次（可能是刚浏览过的手动城市）：同样换代 +
+            // abort，避免自动页在定位期间继续显示旧城市的数据（与 fetchAll 同一
+            // 代际机制）；定位成功后 finishIpLocation 会发起新批次
+            ++m_requestGeneration;
+            abortBatchReplies();
             startIpLocation();
         }
         return;
@@ -436,13 +490,17 @@ void WeatherClient::fetchAll(const QString &locationId)
     if (locationId.isEmpty()) {
         return;
     }
-    if (m_activeReplies > 0) {
-        return; // 上一批请求仍在途，忽略本次
-    }
+    // 上一批请求仍在途时不再静默丢弃本次请求（旧实现直接 return，城市切换会被
+    // 在途批次吞掉：面板页签/标题已指向新城市，数据却停留在上一个城市，直到
+    // 下一个刷新周期才恢复）。这里先递增请求代际使旧批次回调整体失效，再 abort
+    // 在途 reply（abort 可能同步触发 finished，必须先换代），最后以新目标城市
+    // 重新发起完整批次——最新一次请求永远胜出
+    ++m_requestGeneration;
+    abortBatchReplies();
 
     clearError();
+    // 记录本批次的目标城市（fetch 拼装 URL 时读取）
     m_requestLocationId = locationId;
-    m_activeReplies = 5;
     m_loading = true;
     emit loadingChanged();
 
@@ -461,7 +519,29 @@ void WeatherClient::fetchAll(const QString &locationId)
           [this](const QJsonObject &root) { parseIndices(root); });
 }
 
-//--------- IP 自动定位（级联：geoip.ubuntu.com -> myip.ipip.net，均无需凭据） ---------
+// abort 当前批次全部在途请求并清空批次列表。前置条件：m_requestGeneration 已
+// 递增——abort 可能同步触发 finished，被 abort 的回调经代际检查走「过期」分支
+// （不解析、不置错误、不触碰新批次的计数状态）；若 finished 异步到达亦同样安全
+void WeatherClient::abortBatchReplies()
+{
+    if (m_batchReplies.isEmpty()) {
+        return;
+    }
+    // 批次作废：loading 一并复位（调用方随后发起新批次时会重新置位）；先复位
+    // 再 abort，使同步触发的过期回调（不修改 loading）不会与新批次状态交叠
+    if (m_loading) {
+        m_loading = false;
+        emit loadingChanged();
+    }
+    const QList<QNetworkReply *> replies = m_batchReplies;
+    m_batchReplies.clear();
+    for (QNetworkReply *reply : replies) {
+        reply->abort();
+        reply->deleteLater();
+    }
+}
+
+//--------- IP 自动定位（级联：geoip.ubuntu.com -> myip.ipip.net，均走 HTTPS 且无需凭据） ---------
 
 void WeatherClient::startIpLocation()
 {
@@ -473,13 +553,33 @@ void WeatherClient::startIpLocation()
     requestUbuntuLookup();
 }
 
+// 主动放弃在途 IP 定位（浏览手动城市/离开自动定位时调用）：先断开本对象的
+// 回调链（abort 会触发 finished，不先断开会把级联走到备源/完成处理），再
+// abort 并释放，最后复位 locating 状态
+void WeatherClient::abortIpLocation()
+{
+    if (m_ipReply) {
+        QNetworkReply *reply = m_ipReply;
+        m_ipReply = nullptr;
+        reply->disconnect(this);
+        reply->abort();
+        reply->deleteLater();
+    }
+    if (m_locating) {
+        m_locating = false;
+        emit locatingChanged();
+    }
+}
+
 // 主源：geoip.ubuntu.com/lookup 返回 XML（<City>Changsha</City> 等英文字段）
 void WeatherClient::requestUbuntuLookup()
 {
-    QNetworkRequest request{QUrl(QStringLiteral("http://geoip.ubuntu.com/lookup"))};
+    QNetworkRequest request{QUrl(QStringLiteral("https://geoip.ubuntu.com/lookup"))};
     request.setTransferTimeout(std::chrono::milliseconds(10000));
     QNetworkReply *reply = m_nam->get(request);
+    m_ipReply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        m_ipReply = nullptr;
         const QByteArray data = reply->error() == QNetworkReply::NoError ? reply->readAll() : QByteArray();
         reply->deleteLater();
 
@@ -500,10 +600,12 @@ void WeatherClient::requestUbuntuLookup()
 // 备源：myip.ipip.net 返回纯文本（“当前 IP：x.x.x.x  来自于：中国 湖南 长沙  电信”）
 void WeatherClient::requestIpipLocation()
 {
-    QNetworkRequest request{QUrl(QStringLiteral("http://myip.ipip.net"))};
+    QNetworkRequest request{QUrl(QStringLiteral("https://myip.ipip.net"))};
     request.setTransferTimeout(std::chrono::milliseconds(10000));
     QNetworkReply *reply = m_nam->get(request);
+    m_ipReply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        m_ipReply = nullptr;
         const QString content = reply->error() == QNetworkReply::NoError
                                     ? QString::fromUtf8(reply->readAll()) : QString();
         reply->deleteLater();
@@ -533,6 +635,16 @@ void WeatherClient::requestIpipLocation()
 
 void WeatherClient::finishIpLocation(const QString &city, const QString &province, bool englishName)
 {
+    // 复核定位结果是否仍被需要：发起定位后用户可能已浏览到手动城市页签
+    // （m_activeCityIndex > 0），或已通过 gsettings 离开自动定位（正常情况下
+    // 在途请求已被 abortIpLocation 放弃，这里是兜底复核）——此时 IP 城市不再
+    // 对应当前活动页，直接丢弃结果，避免覆盖手动城市的展示数据
+    if (!m_autolocate || m_activeCityIndex > 0) {
+        m_locating = false;
+        emit locatingChanged();
+        return;
+    }
+
     ensureCityTableLoaded();
     QString matchedId;
     QString matchedName;
@@ -696,12 +808,24 @@ void WeatherClient::fetch(const QString &path, const QString &type,
     request.setTransferTimeout(std::chrono::milliseconds(15000));
 
     QNetworkReply *reply = m_nam->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, handler]() {
+    // 记录发起批次：请求登记到批次列表（完成/abort 时移除），并捕获当时的请求
+    // 代际供完成回调判过期（fetchAll 在换代后立即发起新批次，本代际即批次代际）
+    const int generation = m_requestGeneration;
+    m_batchReplies.append(reply);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation, handler]() {
+        m_batchReplies.removeOne(reply);
         const int httpStatus =
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const QByteArray payload = reply->readAll();
         reply->close();
         reply->deleteLater();
+
+        // 过期批次（发起后目标城市已切换，或本批次已被新请求 abort 取代——
+        // abort 前代际已递增）：整体丢弃，不解析、不置错误、不计数，避免旧城市
+        // 数据串入当前展示，也避免 abort 误报「网络不可达」
+        if (generation != m_requestGeneration) {
+            return;
+        }
 
         QJsonObject root;
         QJsonParseError parseError;
@@ -726,15 +850,16 @@ void WeatherClient::fetch(const QString &path, const QString &type,
     });
 }
 
+// 批次内单个请求完成：全部完成（批次列表清空）后结束 loading 状态。
+// 过期批次的回调不会走到这里（fetch 回调先做代际检查）；被 abort 的批次在
+// abortBatchReplies 中已整体复位计数与 loading，不影响新批次
 void WeatherClient::finishOne()
 {
-    if (m_activeReplies > 0) {
-        m_activeReplies -= 1;
+    if (!m_batchReplies.isEmpty() || !m_loading) {
+        return;
     }
-    if (m_activeReplies == 0 && m_loading) {
-        m_loading = false;
-        emit loadingChanged();
-    }
+    m_loading = false;
+    emit loadingChanged();
 }
 
 void WeatherClient::setError(const QString &message)
@@ -906,7 +1031,9 @@ QVariantList WeatherClient::searchCities(const QString &keyword, int limit)
             score = 2;
         } else if (record.name.contains(trimmed)) {
             score = 3;
-        } else if (record.province.contains(trimmed) && record.nameEn.startsWith(keywordLower)) {
+        // 省英文名前缀（CSV Province_EN 列，小写存储）：支持按省名拼音搜出
+        // 该省全部城市（如 hunan -> 长沙/株洲…），排名低于城市名直配
+        } else if (record.provinceEn.startsWith(keywordLower, Qt::CaseInsensitive)) {
             score = 4;
         } else if (record.nameEn.contains(keywordLower)) {
             score = 5;
@@ -976,6 +1103,7 @@ void WeatherClient::ensureCityTableLoaded()
         record.id = id.mid(2); // 去掉 "CN" 前缀，即和风 LocationID
         record.nameEn = columns.at(1);
         record.name = columns.at(2);
+        record.provinceEn = columns.at(6);
         record.province = columns.at(7);
         record.adminDistrict = columns.at(9);
         m_cities.append(record);

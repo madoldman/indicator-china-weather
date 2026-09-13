@@ -21,16 +21,6 @@
 #define GEOIP_WORKER_H
 
 #include <QObject>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QEventLoop>
-#include <QJsonDocument>
-#include <QJsonParseError>
-#include <QJsonObject>
-
-class QNetworkAccessManager;
-class QNetworkReply;
 
 class GeoIpWorker : public QObject
 {
@@ -40,14 +30,10 @@ public:
 
 private slots:
     void doWork();
-    //void onReplyFinished(QNetworkReply *reply);
 
 signals:
     void requestStartWork();
     void automaticLocationFinished(const QString &cityName);
-
-private:
-    //QNetworkAccessManager *m_networkManager = nullptr;
 };
 
 #endif // GEOIP_WORKER_H

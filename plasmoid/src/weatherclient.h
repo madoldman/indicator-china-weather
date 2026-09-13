@@ -21,6 +21,7 @@
 #define CHINAWEATHER_PLASMOID_WEATHERCLIENT_H
 
 #include <QHash>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -32,6 +33,7 @@
 class QQmlEngine;
 class QJSEngine;
 class QNetworkAccessManager;
+class QNetworkReply;
 class QTimer;
 
 /*
@@ -49,6 +51,11 @@ class QTimer;
  * QML 端在 main.qml（PlasmoidItem，id: root）实例化，各视图经
  * root.weatherClient 访问--与官方 systemmonitor 小部件的写法一致
  * （representation 组件通过声明上下文解析 main.qml 的 id）。
+ *
+ * 配置对话框（ConfigCity.qml）是独立 QML 引擎，无法访问主界面实例，会以
+ * headless 模式额外实例化两个无 UI 消费者的辅助客户端：不启动周期定时器、
+ * 不发起任何网络请求，仅读写共享 gsettings（数据刷新由主实例经 changed
+ * 信号链路统一完成）。
  */
 class WeatherClient : public QObject
 {
@@ -77,6 +84,11 @@ class WeatherClient : public QObject
     Q_PROPERTY(bool error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorStringChanged)
 
+    // 无 UI 消费者模式（配置对话框的辅助实例置 true）：不启动周期定时器、
+    // 不发起任何网络请求（refresh() 与内部触发的刷新对其为空操作），仅用于
+    // 读取状态与经 setAutoLocate/addCity/removeCity 写共享 gsettings
+    Q_PROPERTY(bool headless READ headless WRITE setHeadless NOTIFY headlessChanged)
+
     // 实况天气（/v7/weather/now）
     Q_PROPERTY(QString nowTemp READ nowTemp NOTIFY nowChanged)
     Q_PROPERTY(QString nowIcon READ nowIcon NOTIFY nowChanged)
@@ -103,10 +115,13 @@ class WeatherClient : public QObject
 public:
     explicit WeatherClient(QObject *parent = nullptr);
 
-    // 立即刷新一次（上一批请求在途时忽略）
+    // 立即刷新一次。上一批请求仍在途时不再静默忽略：按请求代际废弃旧批次
+    // （abort 在途请求）并以当前活动城市重新发起，保证最新选择的城市总能被
+    // 请求到（headless 实例为空操作）
     Q_INVOKABLE void refresh();
 
-    // 切换活动城市页：0 = 恢复自动定位；>0 = 切到对应手动城市（写时移到 citylist 首位）
+    // 切换活动城市页：0 = 恢复自动定位；>0 = 浏览对应手动城市（仅切换展示与
+    // 请求目标，不写共享 gsettings、不改变自动定位状态）
     Q_INVOKABLE void setActiveCityIndex(int index);
 
     // 追加手动城市（已存在则忽略，去重；name 用于本地城市表未命中时的展示兜底）
@@ -144,6 +159,8 @@ public:
     bool loading() const { return m_loading; }
     bool error() const { return m_hasError; }
     QString errorString() const { return m_errorString; }
+    bool headless() const { return m_headless; }
+    void setHeadless(bool headless);
 
     QString nowTemp() const { return m_nowTemp; }
     QString nowIcon() const { return m_nowIcon; }
@@ -171,6 +188,7 @@ signals:
     void loadingChanged();
     void errorChanged();
     void errorStringChanged();
+    void headlessChanged();
     void nowChanged();
     void dailyChanged();
     void hourlyChanged();
@@ -178,12 +196,17 @@ signals:
     void indicesChanged();
 
 private:
-    // 发起一个和风 v7 请求（location/lang/type 由本函数拼装），完成时回调 handler
+    // 发起一个和风 v7 请求（location/lang/type 由本函数拼装），完成时回调 handler；
+    // 回调按发起时的请求代际判过期（城市已切换/批次被取代则整体丢弃）
     void fetch(const QString &path, const QString &type,
                const std::function<void(const QJsonObject &)> &handler);
-    // 按指定 LocationID 拉取四类天气数据
+    // 按指定 LocationID 拉取五类天气数据（now/7d/24h/air/indices 一个批次）
     void fetchAll(const QString &locationId);
+    // 批次内单个请求完成：全部完成（批次列表清空）后结束 loading 状态
     void finishOne();
+    // abort 当前批次全部在途请求并复位 loading。调用前必须已递增 m_requestGeneration：
+    // abort 可能同步触发 finished，先换代保证被 abort 的回调一律走「过期」分支
+    void abortBatchReplies();
     void setError(const QString &message);
     void clearError();
 
@@ -191,6 +214,10 @@ private:
     void startIpLocation();
     void requestUbuntuLookup();
     void requestIpipLocation();
+    // 主动放弃在途 IP 定位（浏览手动城市/离开自动定位时调用）：断开回调链后
+    // abort 在途请求，并复位 locating 状态（否则状态复位只能依赖请求自然结束，
+    // 切走后面板会一直显示「正在定位…」）
+    void abortIpLocation();
     void finishIpLocation(const QString &city, const QString &province, bool englishName);
     void finishIpLookupFailed();
     // IP 定位失败的退避重试：仅网络/解析失败时调度（30s 起逐次翻倍封顶 300s），
@@ -225,7 +252,7 @@ private:
     // 本地城市表（懒加载）
     void ensureCityTableLoaded();
     void onGSettingsChanged(const QString &key); // gsettings 变更回流（间隔/城市列表/自动定位）
-    void applyRefreshInterval(int minutes);      // 应用间隔并确保周期定时器在运行（同值调用亦会补建缺失的定时器）
+    void applyRefreshInterval(int minutes);      // 应用间隔并确保周期定时器在运行（不写回 gsettings；同值调用亦会补建缺失的定时器；headless 实例只同步属性值不建定时器）
 
     QString m_cityId;   // 旧 kcfg 单城市配置（仅一次性迁移用，非数据源）
     QString m_cityName; // 旧 kcfg 城市名（同上）
@@ -243,6 +270,7 @@ private:
 
     // IP 自动定位结果（会话内缓存，不写入 kcfg；换网/移动后重启自动更新）
     bool m_locating = false;
+    QNetworkReply *m_ipReply = nullptr; // 在途的 IP 定位请求（ubuntu/ipip 级联中至多一个）
     bool m_ipResolved = false;
     QString m_ipCityId;      // 解析出的和风 LocationID
     QString m_ipCityName;   // 解析出的城市名（中文，供展示）
@@ -257,9 +285,15 @@ private:
     QString m_requestLocationId;
 
     bool m_loading = false;
-    int m_activeReplies = 0;
+    // 请求代际：目标城市变更/批次被新请求取代时 +1，过期批次的完成回调据此
+    // 整体丢弃（见 fetchAll/fetch）。abort 必须发生在代际递增之后——abort 可能
+    // 同步触发 finished，先换代才能让被 abort 的回调走「过期」分支
+    int m_requestGeneration = 0;
+    // 当前批次（fetchAll 发起）在途的请求，完成/abort 时移除；空 = 批次结束
+    QList<QNetworkReply *> m_batchReplies;
     bool m_hasError = false;
     QString m_errorString;
+    bool m_headless = false; // 无 UI 消费者模式（见 headless Q_PROPERTY 注释）
 
     // 和风凭据（环境变量读取，不硬编码进代码）
     QString m_apiKey;
@@ -287,6 +321,7 @@ private:
         QString id;
         QString name;
         QString nameEn;
+        QString provinceEn;
         QString province;
         QString adminDistrict;
     };

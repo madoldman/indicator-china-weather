@@ -19,8 +19,6 @@ import "WeatherIconUtil.js" as IconUtil
 PlasmaExtras.Representation {
     id: full
 
-    readonly property bool isNight: IconUtil.isNightHour(new Date().getHours())
-
     // 7 天预报的今天（index 0）项；尚无数据时为 null，供「今天」高亮行安全读取
     readonly property var today: (root.weatherClient.daily ?? []).length > 0
                                  ? root.weatherClient.daily[0] : null
@@ -38,8 +36,19 @@ PlasmaExtras.Representation {
     Layout.preferredWidth: Kirigami.Units.gridUnit * 27
     Layout.preferredHeight: Kirigami.Units.gridUnit * 42
 
+    // 预报图标（7d 的 iconDay）：固定按白天码解析，不做按当前时刻的夜间映射——
+    // 若传入组件创建时刻的 isNight，夜间创建的面板会把全部白天图标经
+    // NIGHT_TO_OFFICIAL 映射成月亮（150/152/153/154），与展示的 textDay/日最高温
+    // 的白天语义自相矛盾。7d 接口已用 iconDay/iconNight 区分昼夜，白天码即正确形态
     function iconSource(code) {
-        return Qt.resolvedUrl(IconUtil.iconPath(code, isNight))
+        return Qt.resolvedUrl(IconUtil.iconPath(code, false))
+    }
+
+    // 实况图标（now 接口）：夜间本返回 150-155 夜间码（自带昼夜形态），isNight
+    // 映射仅兜底「跨午夜未刷新、仍显示白天码」的场景；绑定随每次数据刷新
+    // （nowIcon 变更）重新求值，不随组件创建时刻冻结
+    function nowIconSource(code) {
+        return Qt.resolvedUrl(IconUtil.iconPath(code, IconUtil.isNightHour(new Date().getHours())))
     }
 
     // 生活指数彩色圆形背景：半透明柔和色（55% 不透明度），与面板背景融合，
@@ -125,6 +134,17 @@ PlasmaExtras.Representation {
     // 无需再按当前时刻补夜码
     function hourlyIconSource(code) {
         return Qt.resolvedUrl(IconUtil.iconPath(code, false))
+    }
+
+    // 更新时间展示：和风 updateTime 为 ISO 8601 串（如 2026-09-13T14:00+08:00），
+    // 解析为本地时区时间后格式化输出；解析失败时回退原始串，避免显示 Invalid Date
+    function updateLabel(iso) {
+        var s = iso || ""
+        if (s.length === 0) {
+            return ""
+        }
+        var d = new Date(s)
+        return isNaN(d.getTime()) ? s : i18n("更新时间 %1", Qt.formatDateTime(d, "yyyy-MM-dd hh:mm"))
     }
 
     ColumnLayout {
@@ -244,7 +264,7 @@ PlasmaExtras.Representation {
                 Layout.preferredHeight: Layout.preferredWidth
                 fillMode: Image.PreserveAspectFit
                 smooth: true
-                source: full.iconSource(root.weatherClient.nowIcon)
+                source: full.nowIconSource(root.weatherClient.nowIcon)
             }
 
             ColumnLayout {
@@ -468,8 +488,10 @@ PlasmaExtras.Representation {
                                 }
                             }
 
-                            // 空态提示（无逐小时预报数据时占满网格区域居中显示）
+                            // 空态提示（无逐小时预报数据时横跨全部 8 列，占满
+                            // 网格区域居中显示；不可见时 GridLayout 自动忽略该项）
                             PlasmaComponents3.Label {
+                                Layout.columnSpan: 8
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 visible: (root.weatherClient.hourly ?? []).length === 0
@@ -660,9 +682,7 @@ PlasmaExtras.Representation {
 
             PlasmaComponents3.Label {
                 Layout.fillWidth: true
-                text: (root.weatherClient.updateTime ?? "").length > 0
-                      ? i18n("更新时间 %1", root.weatherClient.updateTime)
-                      : ""
+                text: full.updateLabel(root.weatherClient.updateTime ?? "")
                 color: Kirigami.Theme.disabledTextColor
                 font.pixelSize: Kirigami.Units.gridUnit * 0.65
                 elide: Text.ElideRight

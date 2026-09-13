@@ -44,6 +44,29 @@ bool isV7Success(const QJsonObject &root)
     return root.value("code").toString() == QStringLiteral("200");
 }
 
+// 全“-”占位生活指数：indices 请求失败时下发，避免界面残留上一个城市的指数
+LifeStyle placeholderLifeStyle()
+{
+    LifeStyle s;
+    s.ac_brf = s.ac_txt = "-";
+    s.air_brf = s.air_txt = "-";
+    s.allergy_brf = s.allergy_txt = "-";
+    s.comf_brf = s.comf_txt = "-";
+    s.cw_brf = s.cw_txt = "-";
+    s.dc_brf = s.dc_txt = "-";
+    s.drsg_brf = s.drsg_txt = "-";
+    s.fishing_brf = s.fishing_txt = "-";
+    s.flu_brf = s.flu_txt = "-";
+    s.gl_brf = s.gl_txt = "-";
+    s.mu_brf = s.mu_txt = "-";
+    s.ptfc_brf = s.ptfc_txt = "-";
+    s.spi_brf = s.spi_txt = "-";
+    s.sport_brf = s.sport_txt = "-";
+    s.trav_brf = s.trav_txt = "-";
+    s.uv_brf = s.uv_txt = "-";
+    return s;
+}
+
 } // namespace
 
 WeatherWorker::WeatherWorker(QObject *parent) :
@@ -63,7 +86,7 @@ WeatherWorker::WeatherWorker(QObject *parent) :
 
 WeatherWorker::~WeatherWorker()
 {
-    m_networkManager->deleteLater();
+    //m_networkManager 是子对象，由 ~QObject 统一销毁（此处事件循环已停，deleteLater 无效）
 }
 
 void WeatherWorker::onResponseTestNetwork()
@@ -131,15 +154,24 @@ QUrl WeatherWorker::buildApiUrl(const QString &host, const QString &path, const 
     return url;
 }
 
-//发起请求并在完成时回调解析；httpStatus 为 HTTP 状态码（网络层错误为 0）
+//发起请求并在完成时回调解析；httpStatus 为 HTTP 状态码（网络层错误为 0）。
+//回调带批次校验：reply 完成时若批次已被新请求取代（含被 abort 的 reply），只释放
+//reply 不解析不分发，保证过期结果不会覆盖新批次数据或触发用户可见的错误提示
 void WeatherWorker::fetchApi(const QUrl &url, std::function<void(const QJsonObject &, int)> handler)
 {
+    const quint64 generation = m_detailGeneration;
     QNetworkReply *reply = m_networkManager->get(makeApiRequest(url));
+    m_detailReplies.append(reply);
     connect(reply, &QNetworkReply::finished, this, [=]() {
+        m_detailReplies.removeOne(reply);
+        if (generation != m_detailGeneration) {//本批次已被新请求取代（abort 亦走此分支）
+            reply->close();
+            reply->deleteLater();
+            return;
+        }
         int httpStatus = 0;
         const QJsonObject root = readReplyJson(reply, &httpStatus);
         handler(root, httpStatus);
-        finishDetailReply();
     });
 }
 
@@ -175,13 +207,6 @@ QJsonObject WeatherWorker::readReplyJson(QNetworkReply *reply, int *httpStatus)
     return root;
 }
 
-void WeatherWorker::finishDetailReply()
-{
-    if (m_activeDetailReplies > 0) {
-        m_activeDetailReplies -= 1;
-    }
-}
-
 //利用连接请求网络数据：直连和风天气 API v7
 //单城市综合数据拆分为 now / 7d / air / indices 四个请求
 void WeatherWorker::onWeatherDataRequest(const QString &cityId)
@@ -192,14 +217,23 @@ void WeatherWorker::onWeatherDataRequest(const QString &cityId)
     if (!ensureApiKeyAvailable()) {
         return;
     }
-    if (m_activeDetailReplies > 0) {//上一批请求仍在途，丢弃本次请求
-        return;
+
+    //新请求取代在途旧批次：先递增代际再 abort 旧 reply，其 finished 回调
+    //（abort 触发 OperationCanceledError，可能与新请求同线程同步到达）因代际
+    //已变而只做释放——不误发 responseFailure、不误发数据。若像旧实现那样直接
+    //丢弃本次请求，目标城市在旧批次超时窗口内永远拉不到数据，且旧城市迟到
+    //数据会被主窗口照常应用（手动模式回写 citylist[0]），用户切换被整体回滚
+    ++m_detailGeneration;
+    const QList<QNetworkReply *> staleReplies = m_detailReplies;
+    m_detailReplies.clear();
+    for (QNetworkReply *stale : staleReplies) {
+        if (stale) {
+            stale->abort();
+        }
     }
-    m_activeDetailReplies = 4;
 
     ensureCityTableLoaded();
-    m_observeCache = ObserveWeather();
-    m_observeCacheValid = false;
+    m_airCategory.clear();//批次开始清空，防止上一城市/上一批次的空气质量串入
 
     fetchApi(buildApiUrl(QWeather::DEVAPI_HOST, QStringLiteral("/v7/weather/now"), cityId),
              [=](const QJsonObject &root, int httpStatus) { parseNowReply(root, cityId, httpStatus); });
@@ -262,7 +296,7 @@ void WeatherWorker::parseNowReply(const QJsonObject &root, const QString &cityId
                 ? updated.toString("yyyy-MM-dd HH:mm")
                 : root.value("updateTime").toString();
     }
-    m_observeweather.air = m_airCategory;//最近一次 air/now 的空气质量类别
+    m_observeweather.air = m_airCategory;//本批次 air/now 的类别（air 先于 now 返回时可用，否则为空）
 
     //写入配置文件供其他组件调用（保持旧字段顺序与格式）
     QString weatherNow;
@@ -277,9 +311,6 @@ void WeatherWorker::parseNowReply(const QJsonObject &root, const QString &cityId
     weatherNow.append(cityProvinceFromId(cityId) + ",");//省份
     weatherNow.append(m_observeweather.cond_code);
     setCityWeatherNow(weatherNow);
-
-    m_observeCache = m_observeweather;
-    m_observeCacheValid = !now.isEmpty();
 
     emit this->requestSetObserveWeather(m_observeweather);//用于设置主窗口
 }
@@ -355,6 +386,9 @@ void WeatherWorker::parseForecastReply(const QJsonObject &root)
 }
 
 //处理实时空气质量 v7 响应（/v7/air/now）
+//结果仅记录到 m_airCategory（本批次内 now 晚于 air 返回时填入 ObserveWeather.air），
+//不再回填缓存二次 emit 实况：ObserveWeather.air 当前无消费方，二次 emit 会让主窗口
+//每轮刷新执行两次；失败路径保持 m_airCategory 为空（批次开始已清空），等效占位
 void WeatherWorker::parseAirReply(const QJsonObject &root)
 {
     if (!isV7Success(root)) {
@@ -364,20 +398,15 @@ void WeatherWorker::parseAirReply(const QJsonObject &root)
     if (now.isEmpty()) {
         return;
     }
-    m_airAqi = now.value("aqi").toString();
     m_airCategory = now.value("category").toString();
-
-    //air 数据晚于 now 到达时回填缓存并重新下发，保证 ObserveWeather.air 可用
-    if (m_observeCacheValid) {
-        m_observeCache.air = m_airCategory;
-        emit this->requestSetObserveWeather(m_observeCache);
-    }
 }
 
 //处理生活指数 v7 响应（/v7/indices/1d，type=0 全部 16 类），填充全部生活指数
 void WeatherWorker::parseIndicesReply(const QJsonObject &root)
 {
     if (!isV7Success(root)) {
+        //与预报的处理一致：获取失败时下发全“-”占位，避免切换城市后残留上一城市的指数
+        emit this->requestSetLifeStyle(placeholderLifeStyle());
         return;
     }
     LifeStyle m_lifestyle;

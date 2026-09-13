@@ -36,16 +36,22 @@
 
 namespace {
 
+//停止并回收工作线程（线程对象不挂父对象，由本函数在正常退出时 delete）。
+//等待超时时不调用 terminate()：对可能阻塞在网络栈/数据库锁里的线程强制终止
+//随时可能崩溃；调用时机为应用退出，此时记录告警并有意泄漏线程对象交由进程
+//统一回收，风险小于强杀（geoip/weather 链路均已设传输超时，超时仅见于极端异常）
 void quitThread(QThread *thread)
 {
-    Q_ASSERT(thread);
-    if (thread) {
-        thread->quit();
-        if (!thread->wait(2000)) {
-            thread->terminate();
-            thread->wait();
-        }
+    if (!thread) {
+        return;
     }
+    thread->quit();
+    if (!thread->wait(2000)) {
+        qWarning() << "WeatherManager: worker thread did not finish within 2s;"
+                      " leak the QThread instead of calling terminate()";
+        return;
+    }
+    delete thread;
 }
 
 } // namespace
@@ -54,8 +60,10 @@ WeatherManager::WeatherManager(QObject *parent) : QObject(parent)
 {
     m_geoipWorker = new GeoIpWorker();
     m_weatherWorker = new WeatherWorker();
-    m_geoipThread = new QThread(this);
-    m_weatherThread = new QThread(this);
+    //线程对象不挂父对象：退出时若线程未能在时限内结束，quitThread 会泄漏而非
+    //强杀；若挂到 this 上，~QObject 会连带 delete 仍在运行的 QThread 导致 qFatal
+    m_geoipThread = new QThread();
+    m_weatherThread = new QThread();
     m_geoipWorker->moveToThread(m_geoipThread);
     m_weatherWorker->moveToThread(m_weatherThread);
 
@@ -130,19 +138,19 @@ void WeatherManager::setAutomaticCity(const QString &cityName)
     QFile file(":/data/data/china-city-list.csv");
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString line = file.readLine();
-        line = line.replace("\n", "");
+        line = line.remove("\r").remove("\n");//CSV 为 CRLF，与 ensureCityTableLoaded 保持一致
         while (!line.isEmpty()) {
             QStringList resultList = line.split(",");
             if (resultList.length() < 10) {
                 line = file.readLine();
-                line = line.replace("\n", "");
+                line = line.remove("\r").remove("\n");
                 continue;
             }
 
             QString id = resultList.at(0);
             if (!id.startsWith("CN")) {
                 line = file.readLine();
-                line = line.replace("\n", "");
+                line = line.remove("\r").remove("\n");
                 continue;
             }
 
@@ -164,7 +172,7 @@ void WeatherManager::setAutomaticCity(const QString &cityName)
             }
 
             line = file.readLine();
-            line = line.replace("\n", "");
+            line = line.remove("\r").remove("\n");
         }
         file.close();
     }
@@ -183,7 +191,12 @@ void WeatherManager::initConnectionInfo()
                               QDBusConnection::systemBus() );
 
     QDBusMessage result = interface.call("Get", "org.freedesktop.NetworkManager", "ActiveConnections");
-    QList<QVariant> outArgs = result.arguments();
+    const QList<QVariant> outArgs = result.arguments();
+    if (outArgs.isEmpty()) {//NetworkManager 未运行等调用失败时无返回参数，直接返回避免越界
+        qWarning() << "initConnectionInfo: get ActiveConnections failed:"
+                   << result.errorMessage();
+        return;
+    }
     QVariant first = outArgs.at(0);
     QDBusVariant dbvFirst = first.value<QDBusVariant>();
     QVariant vFirst = dbvFirst.variant();

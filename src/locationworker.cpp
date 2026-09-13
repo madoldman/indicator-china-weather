@@ -21,6 +21,7 @@
 
 #include <QDebug>
 #include <QFile>
+#include <QMutexLocker>
 
 WorkerThread::WorkerThread(LocationWorker *parent) :
     QThread(parent)
@@ -41,7 +42,7 @@ void WorkerThread::run()
         line = line.replace("\n", "");
         while (!line.isEmpty()) {
             QStringList resultList = line.split(",");
-            if (resultList.length() < 10) {
+            if (resultList.length() < 11) {//shorthand 取第 10 列，需至少 11 列
                 line = file.readLine();
                 line = line.replace("\n", "");
                 continue;
@@ -66,7 +67,10 @@ void WorkerThread::run()
             data.admin_district = resultList.at(9);
             data.shorthand = resultList.at(10);
 
-            m_worker->m_locatonList << data; //将数据存入m_locatonList中
+            {//子线程写与主线程 exactMatchCity 的读以互斥锁同步，消除数据竞争
+                QMutexLocker locker(&m_worker->m_listMutex);
+                m_worker->m_locatonList << data; //将数据存入m_locatonList中
+            }
 
             line = file.readLine();
             line = line.replace("\n", "");
@@ -86,6 +90,9 @@ LocationWorker::LocationWorker(QObject *parent)
 
 LocationWorker::~LocationWorker()
 {
+    //先等加载线程退出，避免其仍访问即将销毁的 m_locatonList/m_listMutex
+    m_workerThread->quit();
+    m_workerThread->wait();
     m_workerThread->deleteLater();
 }
 
@@ -93,6 +100,7 @@ QList<LocationData> LocationWorker::exactMatchCity(const QString &inputText) con
 {
     QList<LocationData> searchedList;
 
+    QMutexLocker locker(&m_listMutex);
     for (const LocationData line : m_locatonList) { //m_worker->m_locatonList << data;
         if (line.shorthand == inputText || line.id == inputText ||                                    //拼音和ID
             line.province == inputText ||line.province_en == inputText ||                             //省

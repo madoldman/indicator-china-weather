@@ -21,6 +21,7 @@
 #define LOCATIONWORKER_H
 
 #include <QList>
+#include <QMutex>
 #include <QObject>
 #include <QThread>
 
@@ -53,6 +54,8 @@ public:
 
 private:
     friend class WorkerThread;
+    //m_locatonList 由 WorkerThread 在子线程填充、主线程搜索读取，用互斥锁保护
+    mutable QMutex m_listMutex;
     QList<LocationData> m_locatonList;
     WorkerThread *m_workerThread = nullptr;
 };

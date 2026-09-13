@@ -64,19 +64,18 @@ private:
     QUrl buildApiUrl(const QString &host, const QString &path, const QString &location, const QString &type = QString());
     void fetchApi(const QUrl &url, std::function<void(const QJsonObject &, int)> handler);
     QJsonObject readReplyJson(QNetworkReply *reply, int *httpStatus = nullptr);
-    void finishDetailReply();
 
     // 单城市综合数据：now / 7d / air / indices 四个请求
-    int m_activeDetailReplies = 0;//在途请求数，全部结束后才接受下一次请求
+    //新请求到来时 abort 在途旧 reply 并递增代际，取代（而非丢弃）旧批次：
+    //完成回调校验代际，过期结果一律不分发，避免旧城市数据迟到覆盖新城市
+    quint64 m_detailGeneration = 0;//批次代号
+    QList<QNetworkReply *> m_detailReplies;//当前批次在途 reply，供新批次 abort
     void parseNowReply(const QJsonObject &root, const QString &cityId, int httpStatus);
     void parseForecastReply(const QJsonObject &root);
     void parseAirReply(const QJsonObject &root);
     void parseIndicesReply(const QJsonObject &root);
 
-    // air 数据可能晚于 now 到达，缓存实况便于回填后重发
-    ObserveWeather m_observeCache;
-    bool m_observeCacheValid = false;
-    QString m_airAqi;
+    // air/now 的空气质量类别；仅本批次内 now 晚于 air 返回时填入 ObserveWeather.air
     QString m_airCategory;
 
     // 收藏城市列表批量简报：逐城请求 /v7/weather/now（串行 + 小间隔）

@@ -176,7 +176,7 @@ struct LocationData {
 class CitySettingData
 {
 public:
-    bool active;
+    bool active = false;
 
     QString id;
     QString name;

@@ -15,7 +15,7 @@
         "License": "GPL-3.0-only",
         "Name": "天气",
         "Name[en_US]": "Weather",
-        "Version": "0.1",
+        "Version": "3.1.2",
         "Website": "https://github.com/madoldman/indicator-china-weather"
     },
     "X-Plasma-API": "declarativeappletscript",
