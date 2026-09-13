@@ -60,6 +60,8 @@
 #include <QTimer>
 #include <QFileInfo>
 #include <QLocale>
+#include <QDateTime>
+#include <QHash>
 #include <QPainterPath>
 #include <QMenu>
 #include <QAction>
@@ -124,7 +126,7 @@ private:
     };
 
     // 用户手册功能
-    DaemonDbus *mDaemonIpcDbus;
+    DaemonDbus *mDaemonIpcDbus = nullptr;
 
     Ui::MainWindow *ui;
     QScrollArea *m_scrollarea = nullptr;
@@ -133,35 +135,28 @@ private:
     LeftUpSearchBox *m_leftupsearchbox = nullptr;
     WeatherManager* m_weatherManager = nullptr;
     PromptWidget *m_hintWidget = nullptr;
-    PromptWidget *m_movieWidget = nullptr;
     LeftUpSearchView *m_searchView = nullptr;
     LeftUpSearchDelegate *m_delegate = nullptr;
     QSortFilterProxyModel* m_proxyModel = nullptr;
     QStandardItemModel *m_model = nullptr;
     LocationWorker *m_locationWorker = nullptr;
-    Information *m_information;
+    Information *m_information = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
-    QTimer *m_refreshweather;
+    QTimer *m_refreshweather = nullptr;
     QMenu *m_mainMenu = nullptr;
-    QAction *m_openAction;
-    QAction *m_quitAction;
+    QAction *m_openAction = nullptr;
+    QAction *m_quitAction = nullptr;
 
     //*****2020.12.19增加
-    QPushButton *logoBtn;
-    QLabel *logolb;
+    QPushButton *logoBtn = nullptr;
+    QLabel *logolb = nullptr;
 
-    QWidget *titleWid;
-    QHBoxLayout *titleLayout;
+    QWidget *titleWid = nullptr;
+    QHBoxLayout *titleLayout = nullptr;
 
-    QPushButton *setBtn;
-    QMenu *menu ;
-//    AddCityAction *addCityAction;
-    QAction *aboutAction;
     QList<QAction *> actions ;
     //*****2020.12.19增加
     menuModule *m_menu = nullptr;
-
-    void judgeSystemLanguage();
 
     void onSearchBoxEdited();
     void searchCityName();
@@ -177,16 +172,9 @@ private:
     // 键盘响应事件
     void keyPressEvent(QKeyEvent *event);
 
-//    void mousePressEvent(QMouseEvent *event);
-//    void mouseReleaseEvent(QMouseEvent *event);
-//    void mouseMoveEvent(QMouseEvent *event);
-
     bool event(QEvent *event);
     // 轮播页交互事件过滤器：左右拖动/滚轮切换城市页
     bool eventFilter(QObject *watched, QEvent *event);
-    bool isPress;
-    QPoint winPos;
-    QPoint dragPos;
 
     // getstting初始化、值获取、 设置getsetting值
     void initGsetting();
@@ -222,8 +210,6 @@ private:
 
     QString nowThemeStyle;
 
-    QLabel *cityLabel;
-
     //城市轮播成员：容器/页数据/简报去抖定时器/拖动手势状态/拉取去重与定位缓存
     QStackedWidget *m_cityStack = nullptr;  //城市轮播容器，左右拖动/滚轮切换城市
     QList<CityPage> m_cityPages;            //轮播各页对应的数据
@@ -235,16 +221,18 @@ private:
     QString m_autoCityId;                   //最近一次自动定位到的城市（rebuild时恢复自动定位页显示）
     QString m_autoCityName;                 //最近一次自动定位到的城市中文名
     QString m_activeViewCityId;             //当前浏览页的城市ID（空=自动定位页）；重建轮播时恢复浏览位置
-    ObserveWeather m_currentObserve;        //主程序当前实际城市天气（自动定位时即自动定位城市），供收藏简报插最前
+    ObserveWeather m_currentObserve;        //主程序当前实际城市天气（自动定位时即自动定位城市），供收藏简报插最前；
+                                            //仅承载「当前城市」语义：浏览性拉取不得覆盖
+    QHash<QString, QString> m_cityNameCache; //LocationID→城市名缓存表（首次调用一次性加载内置城市表，避免逐次解析CSV）
+    bool m_cityNameCacheLoaded = false;      //城市名缓存表是否已加载
+    qint64 m_lastAutoLocateMs = 0;           //上次自动定位成功时间戳（ms），10分钟内滑回自动页复用结果不重定位
 
     bool is_open_city_collect_widget = false;
-    CityCollectionWidget *m_citycollectionwidget;
 signals:
     void sendCurrentCityId(QString id);//发送到主界面更新主界面天气
     void requestShowCollCityWeather(); //显示收藏城市列表天气
     void requestSetCityWeather(QString weather_data); //发送出去显示主界面城市天气
     void updatecity();
-    void requestSetCityName(QString cityName);//在搜索列表中选中一个城市后，左上角城市名需要更改
 
 
 

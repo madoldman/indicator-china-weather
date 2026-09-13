@@ -116,6 +116,15 @@ CityAddition::CityAddition(QWidget *parent) :
 
 CityAddition::~CityAddition()
 {
+    //m_locationWorker 构造时无 parent，其内部 WorkerThread 持有整张城市表（约2MB）；
+    //~LocationWorker 会先 quit()+wait() 等待解析线程退出再销毁成员数据，
+    //即使关闭窗口时线程仍在解析（打开后立刻关闭）也不会悬垂
+    delete m_locationWorker;
+
+    //m_model 无 parent；searchCityName() 中重新赋值前已 delete 旧对象，
+    //但从未触发重新搜索时该对象无人释放，在此统一释放
+    delete m_model;
+
     delete ui;
 }
 

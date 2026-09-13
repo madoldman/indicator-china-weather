@@ -22,13 +22,8 @@
 
 #include "data.h"
 
-#include <QtNetwork/QNetworkAccessManager>
-#include <QtNetwork/QNetworkRequest>
-#include <QtNetwork/QNetworkReply>
-
 #include <QWidget>
 #include <QTime>
-#include <QThread>
 
 namespace Ui {
 class citycollectionitem;
@@ -56,31 +51,19 @@ public:
     */
     void setCityWeather(ObserveWeather observeweather);
 
-    // using network interface to get city weather data from internet.
-    void setCurrentWeather(QString cityId);
-
     // set background image according to current weather code.
     QString convertCodeToBackgroud(int code);
 
     QString m_city_id = "";
     bool is_curr_city = false;
     bool is_normal_item = true;
-    int m_collcitynum;
+    int m_collcitynum = 0;
 
 protected:
     // show close icon when mouse cursor hover on collected city item
     bool eventFilter(QObject *obj, QEvent *event);
 
 private slots:
-    // used to send requestGetWeatherData signal
-    void onThreadStart();
-
-    // show close icon when mouse cursor hover on collected city item
-    void onWeatherDataRequest(const QString &cityId);
-
-    // handle weather data get from internet
-    void onWeatherDataReply();
-
     // show add collected widget, a search box and listview in this widget
     void on_btnAddCity_clicked();
 
@@ -89,14 +72,11 @@ private slots:
 
 private:
     Ui::citycollectionitem *ui;
-    QNetworkAccessManager *m_networkManager = nullptr;
 
 signals:
     void changeCurrentCity(QString cityId);
     void showCityAddWiget();
     void requestDeleteCity(QString cityId);
-    void requestGetWeatherData(QString cityId);
-    void mThreadFinish();
 };
 
 #endif // CITYCOLLECTIONITEM_H

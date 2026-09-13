@@ -49,7 +49,7 @@ void menuModule::initAction(){
     menuButton->setFlat(true);
     menuButton->setFixedSize(iconSize);
 
-    m_menu = new QMenu();
+    m_menu = new QMenu(this);
 
     addCityAction = new AddCityAction(m_menu);
     QList<QAction *> actions ;
@@ -57,10 +57,13 @@ void menuModule::initAction(){
     actionTheme->setText(tr("Theme"));
     QAction *actionHelp = new QAction(m_menu);
     actionHelp->setText(tr("Help"));
+    actionHelp->setData(QStringLiteral("help")); //动作标识，供triggerMenu用data()路由（译文不影响匹配）
     QAction *actionAbout = new QAction(m_menu);
     actionAbout->setText(tr("About"));
+    actionAbout->setData(QStringLiteral("about"));
     QAction *actionQuit = new QAction(m_menu);
     actionQuit->setText(tr("Quit"));
+    actionQuit->setData(QStringLiteral("quit"));
     QAction *actionInterval = new QAction(m_menu);
     actionInterval->setText(tr("刷新间隔"));
     QAction *actionAddPanel = new QAction(m_menu);
@@ -71,8 +74,8 @@ void menuModule::initAction(){
     autoLocateAction->setCheckable(true);
     actions<<addCityAction<<autoLocateAction<<actionInterval<<actionAddPanel<<actionHelp<<actionAbout<<actionQuit;
     m_menu->addActions(actions);
-//    互斥按钮组
-    QMenu *themeMenu = new QMenu;
+//    互斥按钮组（themeMenu 用成员变量并挂到 this，避免无 parent 泄漏）
+    themeMenu = new QMenu(this);
     QActionGroup *themeMenuGroup = new QActionGroup(this);
     QAction *autoTheme = new QAction("Auto",this);
     themeMenuGroup->addAction(autoTheme);
@@ -97,7 +100,7 @@ void menuModule::initAction(){
     connect(themeMenu,&QMenu::triggered,this,&menuModule::triggerThemeMenu);
 
     // 刷新间隔子菜单：读写 gsettings refresh-interval，改后经信号同步主窗口定时器
-    intervalMenu = new QMenu;
+    intervalMenu = new QMenu(this);
     QActionGroup *intervalGroup = new QActionGroup(this);
     const QList<int> intervalChoices = {5, 10, 20, 30, 60};
     int currentInterval = 20;
@@ -141,8 +144,12 @@ void menuModule::setThemeFromLocalThemeSetting(QList<QAction* > themeActions)
 #if DEBUG_MENUMODULE
 //    confPath = "org.kylin-usb-creator-data.settings";
 #endif
-    m_pGsettingThemeStatus = new QGSettings(APPDATA);
-    QString appConf = m_pGsettingThemeStatus->get("thememode").toString();
+    //与其他 APPDATA 读取处一致加防护：schema 未安装时 g_settings_new 会直接中止进程，
+    //此时保持 m_pGsettingThemeStatus 为空并按默认 Auto 主题处理
+    if (!m_pGsettingThemeStatus && QGSettings::isSchemaInstalled(APPDATA)) {
+        m_pGsettingThemeStatus = new QGSettings(APPDATA, QByteArray(), this);
+    }
+    QString appConf = m_pGsettingThemeStatus ? m_pGsettingThemeStatus->get("thememode").toString() : QString();
     if("lightonly" == appConf){
         themeStatus = themeLightOnly;
         themeActions[1]->setChecked(true);   //程序gsetting中为浅色only的时候就给浅色按钮设置checked
@@ -182,14 +189,13 @@ void menuModule::setStyleByThemeGsetting(){
 }
 
 void menuModule::triggerMenu(QAction *act){
-
-
-    QString str = act->text();
-    if(tr("Quit") == str){
+    //用 data() 携带的动作标识路由：tr() 译文一变，text() 逐字比较即失效
+    const QString actionId = act->data().toString();
+    if(QLatin1String("quit") == actionId){
         emit menuModuleClose();
-    }else if(tr("About") == str){
+    }else if(QLatin1String("about") == actionId){
         aboutAction();
-    }else if(tr("Help") == str){
+    }else if(QLatin1String("help") == actionId){
         helpAction();
     }
 }
@@ -254,27 +260,45 @@ void menuModule::addPanelAction(){
         "}"
         "if (!found && panels().length > 0) { panels()[0].addWidget('org.madoldman.chinaweather'); }"
         "found ? 'exists' : 'added'");
-    QProcess gdbus;
-    gdbus.start(QStringLiteral("gdbus"), {QStringLiteral("call"), QStringLiteral("--session"),
+    //gdbus 调用可能耗时数秒：改为异步执行，避免 waitForFinished 阻塞UI线程冻结主界面。
+    //QProcess 挂在 this 上保活，结束后 deleteLater；结果提示统一在输出可读后给出
+    QProcess *gdbus = new QProcess(this);
+    auto reportResult = [this, gdbus]() {
+        const QString out = QString::fromUtf8(gdbus->readAllStandardOutput());
+        if (out.contains(QStringLiteral("added"))) {
+            QMessageBox::information(this, tr("天气"), tr("已将天气小部件添加到面板。"));
+        } else if (out.contains(QStringLiteral("exists"))) {
+            QMessageBox::information(this, tr("天气"), tr("面板上已有天气小部件。"));
+        } else {
+            QMessageBox::warning(this, tr("天气"), tr("添加失败：未检测到可用的 Plasma 面板。"));
+        }
+        gdbus->deleteLater();
+    };
+    //FailedToStart（gdbus 未安装等）只发 errorOccurred 不发 finished，需单独收尾避免静默无提示；
+    //Crashed 时 errorOccurred 与 finished 都会到达，此处仅处理启动失败，其余统一由 finished 收尾
+    connect(gdbus, &QProcess::errorOccurred, this, [reportResult] (QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            reportResult();
+        }
+    });
+    connect(gdbus, &QProcess::finished, this, [reportResult] (int, QProcess::ExitStatus) {
+        reportResult();
+    });
+    gdbus->start(QStringLiteral("gdbus"), {QStringLiteral("call"), QStringLiteral("--session"),
         QStringLiteral("--dest"), QStringLiteral("org.kde.plasmashell"),
         QStringLiteral("--object-path"), QStringLiteral("/PlasmaShell"),
         QStringLiteral("--method"), QStringLiteral("org.kde.PlasmaShell.evaluateScript"),
         script});
-    gdbus.waitForFinished(5000);
-    const QString out = QString::fromUtf8(gdbus.readAllStandardOutput());
-    if (out.contains(QStringLiteral("added"))) {
-        QMessageBox::information(this, tr("天气"), tr("已将天气小部件添加到面板。"));
-    } else if (out.contains(QStringLiteral("exists"))) {
-        QMessageBox::information(this, tr("天气"), tr("面板上已有天气小部件。"));
-    } else {
-        QMessageBox::warning(this, tr("天气"), tr("添加失败：未检测到可用的 Plasma 面板。"));
-    }
 }
 
 void menuModule::triggerThemeMenu(QAction *act){
     if(!m_pGsettingThemeStatus)
     {
-        m_pGsettingThemeStatus = new QGSettings(APPDATA);  //m_pGsettingThemeStatus指针重复使用避免占用栈空间
+        //与其他 APPDATA 读取处一致加防护：schema 未安装时 g_settings_new 会直接中止进程
+        if (!QGSettings::isSchemaInstalled(APPDATA)) {
+            return;
+        }
+        m_pGsettingThemeStatus = new QGSettings(APPDATA, QByteArray(), this);  //m_pGsettingThemeStatus指针重复使用避免占用栈空间
     }
     QString str = act->text();
     if("Light" == str){
@@ -318,7 +342,11 @@ void menuModule::helpAction(){
 }
 
 void menuModule::initAbout(){
-    aboutWindow->deleteLater();
+    //首次点击「关于」时 aboutWindow 仍为 nullptr，直接 deleteLater 会空指针解引用崩溃
+    if (aboutWindow) {
+        aboutWindow->deleteLater();
+        aboutWindow = nullptr;
+    }
     aboutWindow = new QWidget();
     aboutWindow->setWindowModality(Qt::ApplicationModal);
     aboutWindow->setWindowFlag(Qt::Tool);
@@ -363,7 +391,8 @@ QHBoxLayout* menuModule::initTitleBar(){
                              "QPushButton::pressed{border:0px;border-radius:4px;background:transparent;}");
     titleIcon->setIconSize(QSize(24,24));
 
-    connect(titleBtnClose,&QPushButton::clicked,[=](){aboutWindow->close();});
+    //lambda 点击时才解引用成员 aboutWindow，窗口已被销毁置空时判空避免崩溃
+    connect(titleBtnClose,&QPushButton::clicked,[=](){if(aboutWindow){aboutWindow->close();}});
     QHBoxLayout *hlyt = new QHBoxLayout;
     titleText->setText(tr("Weather"));
     hlyt->setSpacing(0);
@@ -426,7 +455,13 @@ void menuModule::setStyle(){
 
 void menuModule::initGsetting(){
     if(QGSettings::isSchemaInstalled(FITTHEMEWINDOW)){
-        m_pGsettingThemeData = new QGSettings(FITTHEMEWINDOW);
+        if (m_pGsettingThemeData) {
+            //主题切回 Auto 时 triggerThemeMenu 会再次进入本函数重建监听：
+            //先断开并释放旧对象，避免旧 QGSettings 泄漏且旧连接重复回调
+            disconnect(m_pGsettingThemeData,&QGSettings::changed,this,&menuModule::dealSystemGsettingChange);
+            delete m_pGsettingThemeData;
+        }
+        m_pGsettingThemeData = new QGSettings(FITTHEMEWINDOW, QByteArray(), this);
         connect(m_pGsettingThemeData,&QGSettings::changed,this,&menuModule::dealSystemGsettingChange);
     }
 

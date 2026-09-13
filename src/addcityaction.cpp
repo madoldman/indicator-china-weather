@@ -32,10 +32,6 @@ AddCityAction::AddCityAction(QWidget *parent) : QAction(parent)
         onRequestSendDesktopNotify("Network disconnected");
     }}
     });
-//    connect(this, &AddCityAction::requestSetCityName, this, [=] (QString cityName) {
-//        emit cityNameLabelSignal(cityName);
-//        qDebug()<<"城市名称:"<<cityName;
-//    });
 }
 //转发主程序当前实际城市天气到收藏对话框「当前城市」卡片；收藏对话框尚未创建时缓存，
 //创建后（addCityClick）再应用，保证卡片显示与主程序当前城市一致
@@ -74,9 +70,21 @@ void AddCityAction::addCityClick()
         m_citycollectionwidget->setCurrentCityWeather(m_pendingCurrentCity);
 
         //收到关闭窗口的消息
-        connect(m_citycollectionwidget, &CityCollectionWidget::requestChangeWidgetState, this, [=] () {
+        connect(m_citycollectionwidget, &CityCollectionWidget::requestChangeWidgetState, this, [this] () {
+            //判空：关闭信号可能被连续发出两次（如快速双击关闭按钮，Qt 会发两次 clicked）。
+            //deleteLater 是延迟销毁，第二次触发时对象还在 DeferredDelete 队列里未真正销毁，
+            //但指针已在首次回调置空——不判空会对空指针调用 deleteLater，直接崩溃
+            if (!m_citycollectionwidget) {
+                return;
+            }
             is_open_city_collect_widget = false;
-            m_citycollectionwidget->deleteLater(); //销毁窗口
+            //先置空再销毁：置空后即使回调重入或经 setCurrentCityWeather 等路径访问成员，
+            //也只会命中上面的判空返回，不会解引用已进入销毁队列的对象（use-after-free）。
+            //addCityClick 检测 is_open_city_collect_widget==false 后会重新 new 并覆盖此成员，
+            //「关闭后再打开」行为不受影响
+            CityCollectionWidget *dialog = m_citycollectionwidget;
+            m_citycollectionwidget = nullptr;
+            dialog->deleteLater(); //销毁窗口
         });
         emit requestShowCollCityWeather(); //发送该信号，显示收藏城市窗口各城市的事实天气
         is_open_city_collect_widget = true; //为真时无法打开新的收藏窗口

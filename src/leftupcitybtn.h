@@ -63,7 +63,9 @@ private:
     QLabel *m_addCityBtn = nullptr;
     QLabel *m_addCityLabel = nullptr;
 bool is_open_city_collect_widget = false;//需要
-    CityCollectionWidget *m_citycollectionwidget;//需要
+    //必须显式置空（与 m_layout 等成员写法一致）：否则未初始化值会流入
+    //mousePressEvent 的判空分支，属同类野指针隐患
+    CityCollectionWidget *m_citycollectionwidget = nullptr;//需要
 
 signals:
     void requestSetCityName(QString cityName); //需要//在搜索列表中选中一个城市后，左上角城市名需要更改

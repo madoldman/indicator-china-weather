@@ -48,7 +48,9 @@ signals:
 private:
     bool is_open_city_collect_widget = false;//需要
     QLabel *addCityLabel = nullptr;
-    CityCollectionWidget *m_citycollectionwidget;//需要
+    //必须显式置空：MainWindow::onSetObserveWeather 在收藏对话框首次打开前就会经
+    //setCurrentCityWeather 访问该指针，未初始化值将导致野指针解引用（崩溃）
+    CityCollectionWidget *m_citycollectionwidget = nullptr;//需要
     ObserveWeather m_pendingCurrentCity; //主程序当前实际城市天气（收藏对话框懒创建前缓存）
     void onRequestSendDesktopNotify(QString message);
 
@@ -60,7 +62,6 @@ public slots:
 signals:
 
     void noNetWork();//断网
-    void requestSetCityName(QString cityName); //需要//在搜索列表中选中一个城市后，左上角城市名需要更改
 
 };
 

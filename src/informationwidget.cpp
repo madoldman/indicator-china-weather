@@ -167,7 +167,7 @@ void Information::initControlQss()
     //穿衣指数
     ui->lb_drsg->setStyleSheet(lbIndexQss);
     ui->lb_drsg_brf->setStyleSheet(lbIndexBrfQss);
-    ui->lb_uv_brf->move(96,316);
+    ui->lb_drsg_brf->move(96,316);
     ui->lb_drsg_icon->setStyleSheet(lbIndexIconQss);
     setIndexIcon(ui->lb_drsg_icon, ":/res/control_icons/index_clothe.png", "rgba(190,180,230,0.5)"); // 薰衣草紫
     ui->lb_drsg->setText("穿衣指数");
@@ -175,7 +175,7 @@ void Information::initControlQss()
     //感冒指数
     ui->lb_flu->setStyleSheet(lbIndexQss);
     ui->lb_flu_brf->setStyleSheet(lbIndexBrfQss);
-    ui->lb_uv_brf->move(299,316);
+    ui->lb_flu_brf->move(299,316);
     ui->lb_flu_icon->setStyleSheet(lbIndexIconQss);
     setIndexIcon(ui->lb_flu_icon, ":/res/control_icons/index_flu.png", "rgba(180,210,225,0.5)"); // 雾蓝
     ui->lb_flu->setText("感冒指数");
@@ -365,11 +365,6 @@ void Information::onSetForecastWeather(ForecastWeather forecastweather)
 //    ui->lbIcon_1->resize(ui->lbIcon_1->size());
 
     QString picStr = convertCodeToBackgroud(code);
-    // 白色圆底：官网彩色图标以蓝色为主体，直接叠在蓝色 UI 背景上看不清，
-    // 加半透明白色圆底保证任何背景下都清晰（radius=24 对应 48x48 的 lbIcon）
-    QString pic = "QLabel{background-image:url(" + picStr + ");"
-                  "background-position:center;background-repeat:no-repeat;"
-                  "background-color:rgba(255,255,255,0.85);border-radius:24px;}";
 
     //获取气温
     QString tmp = forecastweather.tmp_min + "℃~" + forecastweather.tmp_max + "℃";

@@ -165,6 +165,17 @@ CityCollectionWidget::CityCollectionWidget(QWidget *parent) :
 
 CityCollectionWidget::~CityCollectionWidget()
 {
+    //loading/loadingBig 构造时无 parent，虽被 wait1/wait2/wait3_4 通过 setMovie 引用，
+    //但 QLabel::setMovie 不接管所有权，需在此释放；QMovie 析构会自行停止播放并断开
+    //全部信号连接，先于子 QLabel（~QObject 阶段才销毁）释放是安全的
+    if (loading != nullptr) {
+        delete loading;
+        loading = nullptr;
+    }
+    if (loadingBig != nullptr) {
+        delete loadingBig;
+        loadingBig = nullptr;
+    }
     delete ui;
     QList<citycollectionitem*> list = this->findChildren<citycollectionitem*>();
     for(citycollectionitem* tmp:list)
@@ -214,8 +225,11 @@ void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
                 QStringList eachKeyList = weatherStr.split(",");
                 foreach (QString strKey, eachKeyList) {
                     if (!strKey.isEmpty()) {
-                        //等号左边为键，右边为值
-                        m_json.insert(strKey.split("=").at(0), strKey.split("=").at(1));
+                        //等号左边为键，右边为值；畸形 token（无 "="）时 split 只有 1 项，at(1) 会越界断言中止
+                        const QStringList kv = strKey.split("=");
+                        if (kv.size() >= 2) {
+                            m_json.insert(kv.at(0), kv.at(1));
+                        }
                     }
                 }
             }
@@ -253,6 +267,10 @@ void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
     }
 
     if (isAddCity) {
+        //添加城市的增量简报只消费一次：进入即复位，后续简报（删除/浏览写citylist后
+        //经去抖送达的）统一走下方 else 分支清空重建。旧实现不复位会让后续简报重复
+        //进入本分支，出现多个"+"号和相同城市问题；else 分支现会先清空再重建，复位安全
+        isAddCity = false;
         //start moving control if task is add a new collect city
         if (strList.size() <= 2) {
             return;
@@ -265,10 +283,13 @@ void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
 
         int itemNum = cityItemList.size();
 
-        citycollectionitem *lastCityItem = cityItemList.at(itemNum-1);
-        delete lastCityItem; //delete last item
+        if (itemNum > 0) {//卡片列表为空时无卡片可删，at(itemNum-1) 会越界断言中止；
+            //itemNum 保持 0，与删完仅剩 1 张卡片后的路径一致，走下方 itemNum <= 1 分支重建
+            citycollectionitem *lastCityItem = cityItemList.at(itemNum-1);
+            delete lastCityItem; //delete last item
 
-        itemNum -= 1;
+            itemNum -= 1;
+        }
 
         if (itemNum <= 1) {
             showCollectCity(35, 242, true, addCityWeatherData); //add a new collection city
@@ -302,9 +323,16 @@ void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
             showCollectCity(35 + 1*170, 242 + 2*100, true, addCityWeatherData); //add a new collection city
             showCollectCity(35 + 2*170, 242 + 2*100, false, ""); //create add collect city item
         }
-//        isAddCity = false;//2020.12.22英文情况下pc模式，对收藏城市进行增加删除关闭重新打开等操作，会出现多个+号和相同城市问题
 
     } else {
+        //全量简报（对话框打开期间删除/浏览等写citylist触发的简报也会到达此处）：
+        //先删除全部旧卡片再按本批数据重建。旧实现从「空容器」假设出发直接新建卡片、
+        //不清理已有卡片，导致同一城市叠加出多份卡片（重影、悬停删除错乱、内存翻倍）
+        const QList<citycollectionitem *> oldItemList = ui->backwidget->findChildren<citycollectionitem *>();
+        for (citycollectionitem *oldItem : oldItemList) {
+            delete oldItem;
+        }
+
         m_citynumber = strList.size()-2;
         QString citynumber = QString::number(m_citynumber) + "/8";
         //#28524 天气首页点击左上角+号，弹出收藏城市显示为0/8，进行增删操作恢复正常，再次打开，依旧显示0/8
@@ -325,7 +353,11 @@ void CityCollectionWidget::onRequestSetCityWeather(QString weather_data)
                 QStringList eachKeyList = eachCityData.split(",");
                 foreach (QString strKey, eachKeyList) {
                     if (!strKey.isEmpty()) {
-                        m_json.insert(strKey.split("=").at(0), strKey.split("=").at(1)); //change data to json format
+                        //畸形 token（无 "="）时 split 只有 1 项，at(1) 会越界断言中止
+                        const QStringList kv = strKey.split("=");
+                        if (kv.size() >= 2) {
+                            m_json.insert(kv.at(0), kv.at(1)); //change data to json format
+                        }
                     }
                 }
                 observeweather.tmp = m_json.value("tmp").toString();
@@ -401,8 +433,11 @@ void CityCollectionWidget::showCollectCity(int x, int y, bool isShowNormal, QStr
             QStringList eachKeyList = weatherStr.split(",");
             foreach (QString strKey, eachKeyList) {
                 if (!strKey.isEmpty()) {
-                    //等号左边为键，右边为值
-                    m_json.insert(strKey.split("=").at(0), strKey.split("=").at(1));
+                    //等号左边为键，右边为值；畸形 token（无 "="）时 split 只有 1 项，at(1) 会越界断言中止
+                    const QStringList kv = strKey.split("=");
+                    if (kv.size() >= 2) {
+                        m_json.insert(kv.at(0), kv.at(1));
+                    }
                 }
             }
         }
@@ -428,7 +463,6 @@ void CityCollectionWidget::showCollectCity(int x, int y, bool isShowNormal, QStr
         m_currentcity->setCityWeather(observeweather);
     }
     m_currentcity->show();
-    //m_currentcity->setCurrentWeather(cityId);
     connect(m_currentcity, SIGNAL(showCityAddWiget()), this, SLOT(onShowCityAddWiget()) );
     connect(m_currentcity, SIGNAL(requestDeleteCity(QString)), this, SLOT(onRequestDeleteCity(QString)) );
     connect(m_currentcity, SIGNAL(changeCurrentCity(QString)), this, SLOT(onChangeCurrentCity(QString)) );
@@ -456,14 +490,14 @@ void CityCollectionWidget::onRequestAddNewCity(QString cityId)
         return;
     }
     //将新增城市写入列表
-    if (listSavedCityId.size() == 10){ //包含最后一项为空字符串的项
-        listSavedCityId.replace(8, cityId); //收藏城市已经有8个，替换最后一个收藏城市
+    if (listSavedCityId.size() == kMaxCityListSize + 1){ //包含最后一项为空字符串的项
+        listSavedCityId.replace(kMaxCityListSize - 1, cityId); //收藏城市已经有8个，替换最后一个收藏城市
     }else {
 
         listSavedCityId.append(cityId); //若收藏城市未满8个,将新添加的城市加到最后
         m_citynumber += 1;
         QString citynumber = QString::number(m_citynumber) + "/8";
-        if(addIsOk = true){
+        if(addIsOk == true){
             loadingBig->start();
             wait3->show();
         }else{
@@ -472,8 +506,11 @@ void CityCollectionWidget::onRequestAddNewCity(QString cityId)
         }
         if (m_citynumber == 1) {
             QList<citycollectionitem *> cityitemlist = ui->backwidget->findChildren<citycollectionitem *>();
-            citycollectionitem *firstitem = cityitemlist.at(0);
-            firstitem->setItemWidgetState(true,true, m_citynumber);
+            //卡片列表为空时无首卡片可更新，at(0) 会越界断言中止；后续简报到达时会整体重建
+            if (!cityitemlist.isEmpty()) {
+                citycollectionitem *firstitem = cityitemlist.at(0);
+                firstitem->setItemWidgetState(true,true, m_citynumber);
+            }
         }
     }
 
@@ -500,6 +537,15 @@ void CityCollectionWidget::onRequestDeleteCity(QString cityId)
 
     //若收藏窗口只有当前城市，不能删掉当前城市
     if (listSavedCityId.size() == 2) {
+        return;
+    }
+
+    //cityId 不在 citylist 中时放弃本次删除（如 brief 解析失败被填成"-"的卡片、
+    //brief 与 citylist 写入竞态导致卡片滞后于列表）。守卫必须位于任何状态变更之前：
+    //既避免 lastIndexOf 返回 -1 后 removeAt(-1) 触发 Qt 断言中止（debug）/越界
+    //（release），也避免出现卡片已删、计数已减而 gsettings 未写的不一致状态
+    const int cityIndex = listSavedCityId.lastIndexOf(cityId);
+    if (cityIndex < 0) {
         return;
     }
 
@@ -548,8 +594,7 @@ void CityCollectionWidget::onRequestDeleteCity(QString cityId)
     }
 
     //更新城市列表
-    int citys=listSavedCityId.lastIndexOf(cityId);
-    listSavedCityId.removeAt(citys);
+    listSavedCityId.removeAt(cityIndex);
         QString newStrCityId = "";
         foreach(QString str, listSavedCityId){
             if (str != ""){

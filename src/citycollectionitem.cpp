@@ -20,18 +20,6 @@
 #include "citycollectionitem.h"
 #include "ui_citycollectionitem.h"
 
-#include <QJsonObject>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QJsonValue>
-#include <QEventLoop>
-#include <QFile>
-#include <QApplication>
-#include <QStringList>
-#include <QUrl>
-#include <QUrlQuery>
-#include <QVariant>
-
 citycollectionitem::citycollectionitem(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::citycollectionitem)
@@ -64,8 +52,6 @@ citycollectionitem::citycollectionitem(QWidget *parent) :
 
     this->setAttribute(Qt::WA_Hover,true);
     this->installEventFilter(this);
-
-    m_networkManager = new QNetworkAccessManager(this);
 }
 
 citycollectionitem::~citycollectionitem()
@@ -157,110 +143,9 @@ void citycollectionitem::setCityWeather(ObserveWeather observeweather)
     int code  = weather_code.toInt();
     QString returnStr = convertCodeToBackgroud(code);
     QString picStr = QString("QLabel{background-image:url(%1);border-radius:4px}").arg(returnStr);
-    ui->lbBackImage->setStyleSheet(picStr); //add background image 
-    ui->lbCityName->setText(observeweather.city); //add city name 
+    ui->lbBackImage->setStyleSheet(picStr); //add background image
+    ui->lbCityName->setText(observeweather.city); //add city name
     this->m_city_id = observeweather.id;
-}
-
-void citycollectionitem::setCurrentWeather(QString cityId)
-{
-    this->m_city_id = cityId;
-
-    if (!cityId.isEmpty()) {
-        QThread *mThread = new QThread();
-        this->moveToThread(mThread);
-        connect(mThread, SIGNAL(finished()), mThread, SLOT(deleteLater()));
-        connect(mThread, SIGNAL(started()), this, SLOT(onThreadStart()));
-        connect(this, SIGNAL(requestGetWeatherData(QString)), this, SLOT(onWeatherDataRequest(QString)));
-        connect(this, SIGNAL(mThreadFinish()), mThread, SLOT(quit()));
-        mThread->start();
-
-        //onWeatherDataRequest(cityId);
-    }
-}
-
-void citycollectionitem::onThreadStart()
-{
-    emit requestGetWeatherData(this->m_city_id);
-}
-
-void citycollectionitem::onWeatherDataRequest(const QString &cityId)
-{
-    if (cityId.isEmpty()) { return; }
-    if (QWeather::apiKey().isEmpty()) {
-        qWarning() << "未设置 QWEATHER_API_KEY 环境变量，无法请求和风天气数据";
-        return;
-    }
-
-    //直连和风天气 API v7；中文/特殊字符经 QUrlQuery 自动百分号编码
-    QUrl url(QString(QWeather::DEVAPI_HOST) + QStringLiteral("/v7/weather/now"));
-    QUrlQuery query;
-    query.addQueryItem(QStringLiteral("location"), cityId);
-    query.addQueryItem(QStringLiteral("lang"), QStringLiteral("zh"));
-    url.setQuery(query);
-
-    QNetworkRequest request;
-    request.setUrl(url);
-    //API Key 认证头（勿手动设置 Accept-Encoding，Qt 需自行管理该头才会透明解压 gzip 响应）
-    request.setRawHeader("X-QW-Api-Key", QWeather::apiKey().toUtf8());
-    QNetworkReply *reply = m_networkManager->get(request);
-    connect(reply, &QNetworkReply::finished, this, &citycollectionitem::onWeatherDataReply );
-}
-
-void citycollectionitem::onWeatherDataReply()
-{
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-
-    int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    qDebug()<<"Reply value of getting weather data by URL is: "<<statusCode;
-
-    if(reply->error() != QNetworkReply::NoError && statusCode != 200) {
-        qDebug() << "reply error!";
-        reply->close();
-        reply->deleteLater();
-        emit this->mThreadFinish();
-        return;
-    }
-
-    QByteArray ba = reply->readAll();
-    reply->close();
-    reply->deleteLater();
-
-    QJsonParseError err;
-    QJsonDocument jsonDocument = QJsonDocument::fromJson(ba, &err);
-    if (err.error != QJsonParseError::NoError) {// Json type error
-        qDebug() << "Json type error";
-        emit this->mThreadFinish();
-        return;
-    }
-    if (jsonDocument.isNull() || jsonDocument.isEmpty()) {
-        qDebug() << "Json null or empty!";
-        emit this->mThreadFinish();
-        return;
-    }
-
-    QJsonObject jsonObject = jsonDocument.object();
-    if (jsonObject.isEmpty() || jsonObject.size() == 0) {
-        qDebug() << "Json object null or empty!";
-        emit this->mThreadFinish();
-        return;
-    }
-    //和风天气 v7：{"code":"200","now":{...}}，code 为字符串
-    if (jsonObject.value("code").toString() == "200") {
-        QJsonObject nowObj = jsonObject.value("now").toObject();
-        if (!nowObj.isEmpty()) {
-            //设置收藏城市实时天气
-            ui->lbTmp->setText(nowObj.value("temp").toString());
-            ui->lbwea->setText(nowObj.value("text").toString());
-            ui->lbTmpUnit->setText("℃");
-            QString weather_code = nowObj.value("icon").toString();
-            int code  = weather_code.toInt();
-            QString returnStr = convertCodeToBackgroud(code);
-            QString picStr = QString("QLabel{background-image:url(%1);border-radius:4px}").arg(returnStr);
-            ui->lbBackImage->setStyleSheet(picStr);
-        }
-    }
-    emit this->mThreadFinish();
 }
 
 QString citycollectionitem::convertCodeToBackgroud(int code)

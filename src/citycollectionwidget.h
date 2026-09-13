@@ -23,6 +23,10 @@
 #define CHINAWEATHERDATA "org.china-weather-data.settings"
 #define FITTHEMEWINDOW "org.ukui.style"
 
+//citylist 容量约定：当前城市 + 8 个收藏城市 = 9 个有效项。
+//gsettings citylist 值以逗号结尾，split 后末尾多一个空串项，满员判断为 size()==kMaxCityListSize+1
+constexpr int kMaxCityListSize = 9;
+
 #include <QDialog>
 #include <QMouseEvent>
 #include <QRect>
@@ -113,10 +117,10 @@ private:
     */
     void showCollectCity(int x, int y, bool isShowNormal, QString weatherStr);
 
-    bool isPress;
+    bool isPress = false;
     QPoint winPos;
     QPoint dragPos;
-    int m_citynumber; //number of current collection cities
+    int m_citynumber = 0; //number of current collection cities
     bool isAddCity = false; //whether add a new collect city
     bool is_open_city_collect_widget = false;
     ObserveWeather m_currentCityWeather; //主程序当前实际城市天气（自动定位时即自动定位城市）
@@ -131,12 +135,12 @@ private:
     QGSettings *m_pThemeStyle = nullptr;
     bool addIsOk = false;
     bool checkNetWork = true;
-    QMovie *loading;
-    QMovie *loadingBig;
-    QLabel *wait1;
-    QLabel *wait2;
-    QLabel *wait3;
-    QLabel *wait3_4;
+    QMovie *loading = nullptr;
+    QMovie *loadingBig = nullptr;
+    QLabel *wait1 = nullptr;
+    QLabel *wait2 = nullptr;
+    QLabel *wait3 = nullptr;
+    QLabel *wait3_4 = nullptr;
 
 signals:
     void sendCurrentCityId(QString id);
