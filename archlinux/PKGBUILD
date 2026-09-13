@@ -13,9 +13,11 @@
 # https://gitlab.archlinux.org/archlinux/packaging/packages/indicator-china-weather/
 #
 # 相比官方打包的 3.0.4：本分支 3.1.2 已由 Qt5/qmake 移植到 Qt6/CMake 构建，
-# 新增 gsettings-qt6、kwindowsystem（KF6）、geoip 三个依赖（均在 extra 仓库，
-# 对应 debian/control 中的 libgsettings-qt-dev、libkf6windowsystem-dev、
-# libgeoip-dev）；UKUI 专属日志库 ukui-log4qt（对应 libukui-log4qt-dev）在
+# 新增 gsettings-qt6、kwindowsystem（KF6）、qt6-declarative 三个依赖（均在
+# extra 仓库，对应 debian/control 中的 libgsettings-qt-dev、libkf6windowsystem-dev，
+# qt6-declarative 提供 Plasmoid QML 后端模块所需的 Qt6::Qml）；libgeoip 依赖
+# 已移除（上游废弃，IP 定位改走 HTTP API，不再链接 GeoIP）；UKUI 专属日志库
+# ukui-log4qt（对应 libukui-log4qt-dev）在
 # Arch 官方仓库与 AUR 均无包，构建时不启用（CMake 选项 ENABLE_UKUI_LOG4QT，
 # 默认 OFF），日志回退 Qt 默认输出。
 #
@@ -49,7 +51,7 @@ pkgdesc="Indicator that displays China weather information (with a Plasma 6 weat
 arch=('x86_64')
 license=('GPL')
 url="https://github.com/madoldman/indicator-china-weather"
-depends=('geoip' 'qt6-base' 'qt6-declarative' 'gsettings-qt6' 'kwindowsystem')
+depends=('qt6-base' 'qt6-declarative' 'gsettings-qt6' 'kwindowsystem')
 makedepends=('git' 'cmake' 'extra-cmake-modules' 'qt6-tools')
 optdepends=('plasma-workspace: Plasma 桌面小部件（Plasmoid）运行环境')
 source=("$pkgname::git+file://$startdir/..#branch=archlinux")

@@ -16,13 +16,15 @@ find_package(X11 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GSETTINGS_QT6 REQUIRED IMPORTED_TARGET gsettings-qt6)
 
-find_path(GEOIP_INCLUDE_DIR GeoIP.h REQUIRED)
-find_library(GEOIP_LIBRARY NAMES GeoIP REQUIRED)
-
 option(ENABLE_UKUI_LOG4QT "Enable UKUI log4qt logging library (not available on Arch)" OFF)
 if(ENABLE_UKUI_LOG4QT)
     find_library(UKUI_LOG4QT_LIBRARY ukui-log4qt REQUIRED)
 endif()
+
+# 开机自启 .desktop 默认仍装到系统绝对路径 /etc/xdg/autostart（同 .pro 行为，
+# 保持 pacman 打包产物不变）；用户前缀/非 root 的本地测试安装用
+# -DINSTALL_AUTOSTART=OFF 跳过，避免写入真实 /etc 导致安装失败
+option(INSTALL_AUTOSTART "Install autostart .desktop into /etc/xdg/autostart (absolute path, keep ON for system packaging)" ON)
 
 set(APP_SOURCES
     src/daemondbus.cpp
@@ -107,7 +109,6 @@ add_executable(indicator-china-weather
 target_include_directories(indicator-china-weather PRIVATE
     src
     src/qtsingleapplication
-    ${GEOIP_INCLUDE_DIR}
 )
 
 target_link_libraries(indicator-china-weather PRIVATE
@@ -118,8 +119,13 @@ target_link_libraries(indicator-china-weather PRIVATE
     Qt6::DBus
     KF6::WindowSystem
     X11::X11
-    ${GEOIP_LIBRARY}
     PkgConfig::GSETTINGS_QT6
+)
+
+# 版本号单一来源为 project(VERSION)，注入 main.cpp 供 --version 等展示，
+# 避免源码里再维护一份字面量造成漂移
+target_compile_definitions(indicator-china-weather PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
 )
 
 if(ENABLE_UKUI_LOG4QT)
@@ -146,9 +152,12 @@ install(FILES res/control_icons/indicator-china-weather.png
 install(FILES ${QM_FILES} DESTINATION share/indicator-china-weather/translations)
 install(FILES indicator-china-weather.desktop
     DESTINATION share/applications)
-# /etc/xdg/autostart 为绝对路径（同 .pro 行为），不随 CMAKE_INSTALL_PREFIX 变化
-install(FILES indicator-china-weather.desktop
-    DESTINATION /etc/xdg/autostart)
+# 绝对路径 /etc/xdg/autostart（同 .pro 行为），不随 CMAKE_INSTALL_PREFIX 变化；
+# 由顶部 INSTALL_AUTOSTART 选项控制，用户前缀安装可关闭
+if(INSTALL_AUTOSTART)
+    install(FILES indicator-china-weather.desktop
+        DESTINATION /etc/xdg/autostart)
+endif()
 install(FILES data/org.china-weather-data.gschema.xml
     DESTINATION share/glib-2.0/schemas)
 

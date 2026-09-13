@@ -36,10 +36,26 @@ static XAtomHelper *global_instance = nullptr;
 // Qt6 移除了 QX11Info，这里改用进程级缓存的独立 XLib 连接。
 // 仅在 X11 会话下才会被调用：非 X11 平台（如 Wayland）上构造函数不初始化
 // 任何 atom，成员函数均以 atom == None 提前返回，不会走到这里
+//
+// 非显然约束：这是进程私有连接，没有 Qt 事件循环代为刷出 Xlib 输出缓冲
+// （Qt5 时代 QX11Info::display() 是 Qt 自己的连接，其事件循环持续读写会
+// 顺带 flush）。本文件对该连接的写操作只有 XChangeProperty（纯写、无
+// 回复），若不显式 flush，请求会一直滞留在约 4KB 的输出缓冲区里（每条
+// hint 约 48 字节，需积累约 80 次调用才因缓冲区满被动刷出），窗管在 Map
+// 窗口时查询不到属性，无边框等设置静默失效。因此每一处 XChangeProperty
+// 之后都必须调用 flushX11()。
 static Display *x11Display()
 {
     static Display *display = XOpenDisplay(nullptr);
     return display;
+}
+
+// 显式刷出私有连接的输出缓冲（约束见 x11Display() 处注释）；
+// 仅在真正建立了 X 连接时才有意义，需判空
+static void flushX11()
+{
+    if (Display *display = x11Display())
+        XFlush(display);
 }
 
 XAtomHelper *XAtomHelper::getInstance()
@@ -147,6 +163,7 @@ void XAtomHelper::setWindowBorderRadius(int winId, const UnityCorners &data)
 
     XChangeProperty(x11Display(), winId, m_unityBorderRadiusAtom, XA_CARDINAL,
                     32, XCB_PROP_MODE_REPLACE, (const unsigned char *) &corners, sizeof (corners)/sizeof (corners[0]));
+    flushX11();
 }
 
 void XAtomHelper::setWindowBorderRadius(int winId, int topLeft, int topRight, int bottomLeft, int bottomRight)
@@ -158,6 +175,7 @@ void XAtomHelper::setWindowBorderRadius(int winId, int topLeft, int topRight, in
 
     XChangeProperty(x11Display(), winId, m_unityBorderRadiusAtom, XA_CARDINAL,
                     32, XCB_PROP_MODE_REPLACE, (const unsigned char *) &corners, sizeof (corners)/sizeof (corners[0]));
+    flushX11();
 }
 
 void XAtomHelper::setUKUIDecoraiontHint(int winId, bool set)
@@ -166,22 +184,27 @@ void XAtomHelper::setUKUIDecoraiontHint(int winId, bool set)
         return;
 
     XChangeProperty(x11Display(), winId, m_ukuiDecorationAtion, m_ukuiDecorationAtion, 32, XCB_PROP_MODE_REPLACE, (const unsigned char *) &set, 1);
+    flushX11();
 }
 
 void XAtomHelper::setWindowMotifHint(int winId, const MotifWmHints &hints)
 {
-    if (m_unityBorderRadiusAtom == None)
+    // 守卫必须检查实际读写的 atom：此前误检 m_unityBorderRadiusAtom，当
+    // _MOTIF_WM_HINTS 不存在而 _UNITY_GTK_BORDER_RADIUS 存在时会以
+    // property atom = None 执行 XChangeProperty，触发 BadAtom 使进程终止
+    if (m_motifWMHintsAtom == None)
         return;
 
     XChangeProperty(x11Display(), winId, m_motifWMHintsAtom, m_motifWMHintsAtom,
                     32, XCB_PROP_MODE_REPLACE, (const unsigned char *)&hints, sizeof (MotifWmHints)/ sizeof (ulong));
+    flushX11();
 }
 
 MotifWmHints XAtomHelper::getWindowMotifHint(int winId)
 {
     MotifWmHints hints;
 
-    if (m_unityBorderRadiusAtom == None)
+    if (m_motifWMHintsAtom == None)
         return hints;
 
     uchar *data;
@@ -214,7 +237,11 @@ XAtomHelper::XAtomHelper(QObject *parent) : QObject(parent)
     if (!display)
         return;
 
-    m_motifWMHintsAtom = XInternAtom(display, "_MOTIF_WM_HINTS", true);
+    // _MOTIF_WM_HINTS 以 onlyIfExists=false 获取：窗管未必预先创建过该 atom，
+    // 旧写法传 true 时可能在典型桌面（KWin/GNOME 已创建）之外的边缘环境返回
+    // None，使 setWindowMotifHint 的守卫与实际写入状态脱节；置 false 确保
+    // 守卫通过后 atom 一定有效
+    m_motifWMHintsAtom = XInternAtom(display, "_MOTIF_WM_HINTS", false);
     m_unityBorderRadiusAtom = XInternAtom(display, "_UNITY_GTK_BORDER_RADIUS", false);
     m_ukuiDecorationAtion = XInternAtom(display, "_KWIN_UKUI_DECORAION", false);
 }

@@ -10,7 +10,7 @@ The weather data are from the QWeather (和风天气) API v7 (requires your own 
 
 
 
-### v4.0 test url（和风天气 API v7，需认证头 `X-QW-Api-Key: your-key`）
+### test url（和风天气 API v7，需认证头 `X-QW-Api-Key: your-key`）
 
 + 实况天气：`https://devapi.qweather.com/v7/weather/now?location=101250101&lang=zh`
 
@@ -38,10 +38,12 @@ curl --compressed -H "X-QW-Api-Key: your-key" "https://devapi.qweather.com/v7/we
 ### 安装依赖
 
 ```bash
-sudo pacman -S --needed base-devel git geoip qt6-base qt6-tools gsettings-qt6 kwindowsystem cmake extra-cmake-modules
+sudo pacman -S --needed base-devel git cmake extra-cmake-modules qt6-base qt6-declarative qt6-tools gsettings-qt6 kwindowsystem
 ```
 
 + 本分支 3.1.2 已移植到 Qt6 并迁移到 CMake 构建，并随包提供 Plasma 6 天气小部件（见下文「Plasma 小部件（Plasmoid）」章节）
++ `qt6-declarative` 提供 Qt6::Qml（Plasmoid QML 后端模块构建与运行必需），缺失时 CMake configure 阶段即失败
++ `plasma-workspace` 为可选运行环境（PKGBUILD optdepends）：仅使用 Plasma 6 天气小部件（Plasmoid）时需要
 + 托盘应用的常驻托盘图标已下线，天气展示改由 Plasma 小部件承担；应用本体保留，可作为完整天气窗口启动
 + 应用窗口菜单提供「刷新间隔」（5/10/20/30/60 分钟，即时生效）与「添加小部件到面板」（快捷把 Plasmoid 加入 Plasma 面板，已存在则不重复添加）
 + ukui-log4qt 为 UKUI 专属日志库，在 Arch 官方仓库与 AUR 均无包，属于可选依赖，本打包默认不启用（仅影响内部日志初始化，天气功能不受影响）
@@ -62,7 +64,7 @@ makepkg -si
 
 ### 维护提示
 
-+ 修改 PKGBUILD 后，在 `archlinux/` 目录执行 `makepkg --printsrcinfo > .SRCINFO` 重新生成元数据
++ 本 PKGBUILD 仅用于本地打包：`pkgrel` 取构建时间戳（运行时求值）、`source` 指向本机绝对路径，因此 `makepkg --printsrcinfo` 生成的 .SRCINFO 会写入这些机器相关/易变值，**不适合自动再生成**。`.SRCINFO` 为手工维护：修改 PKGBUILD 的 `pkgdesc`/`depends`/`optdepends` 等字段后请同步手改 `.SRCINFO`（source 行写 PKGBUILD 的未展开字面形式 `git+file://$startdir/..#branch=archlinux`）；其中 `pkgrel` 只是上次同步时的时间戳快照，实际构建版本以 PKGBUILD 运行时求值为准
 + 如已安装 namcap，可执行 `namcap archlinux/PKGBUILD` 做打包检查
 
 
@@ -130,12 +132,18 @@ Qt 应用（indicator-china-weather）的常驻系统托盘图标已下线：托
 ### 开发调试
 
 ```bash
+# 从仓库根目录构建，产出 QML 扩展模块到 build/plasmoid/qml/
+cmake -B build
+cmake --build build
+
 # 从源码目录临时加载（不安装）查看小部件
-QML2_IMPORT_PATH=plasmoid/build-qml plasmoidviewer -a plasmoid/package
+QML2_IMPORT_PATH=build/plasmoid/qml plasmoidviewer -a plasmoid/package
 
 # 安装/更新到系统（需 root）
 sudo kpackagetool6 -t Plasma/Applet -u plasmoid/package
 ```
+
+城市表以仓库根 `data/china-city-list.csv` 为单一来源（App 内嵌资源与 CMake 安装到小部件目录的拷贝均出自这里）；`plasmoid/package/contents/data/china-city-list.csv` 下的拷贝仅供上述 `kpackagetool6 -u` 直装 package/ 的流程使用，修改城市表时请两处同步（内容一致，仅行尾不同：data/ 为 CRLF，package 内为 LF）。
 
 
 ### Internationalization

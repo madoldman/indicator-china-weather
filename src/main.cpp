@@ -25,6 +25,8 @@
 #include <QLibraryInfo>
 #include <QObject>
 #include <QDir>
+#include <QCommandLineParser>
+#include <cstdio>
 #ifdef ENABLE_UKUI_LOG4QT
 #include <ukui-log4qt.h>
 #endif
@@ -61,7 +63,9 @@ void setAttribute(QtSingleApplication &a)
 
     a.setOrganizationName("kylin");
     a.setApplicationName("indicator-china-weather");
-    a.setApplicationVersion("3.1.0");
+    // 版本号由构建系统注入（CMake: APP_VERSION="${PROJECT_VERSION}"），
+    // 以 project(VERSION) 为单一来源，避免与包版本漂移
+    a.setApplicationVersion(QStringLiteral(APP_VERSION));
     a.setQuitOnLastWindowClosed(false);//Avoid that after hiding mainwindow, close the sub window would cause the program exit
 }
 
@@ -116,9 +120,35 @@ int main(int argc, char *argv[])
     QString id = QString("indicator-china-weather-"+QLatin1String(getenv("DISPLAY")));
     QtSingleApplication a(id, argc, argv);
     qApp->setWindowIcon(QIcon::fromTheme("indicator-china-weather", QIcon(":/res/control_icons/logo_24.png")));
+    //设置属性提前到单实例检查之前：--version 输出依赖 setAttribute 里的
+    //applicationVersion，而该函数不影响单实例锁（锁在 QtSingleApplication 构造时建立）
+    setAttribute(a);//设置属性
+
+    //--version / --help 最小处理。QCommandLineParser（含这两个选项）原本仅在
+    //responseCommand 内解析，而 responseCommand 被禁用：它除解析参数外还会注册
+    //com.kylin.weather DBus 服务、处理 --show 并可能唤起主窗口，直接启用会改变
+    //启动行为。故此处就地解析并处理这两个选项后退出；用 parse() 而非 process()，
+    //未知参数不报错不拦截（如 desktop 文件传入的位置参数），其余启动路径不变。
+    //必须位于单实例检查之前，否则已有实例运行时 --version 会静默退出
+    {
+        QCommandLineParser parser;
+        parser.setApplicationDescription(QCoreApplication::translate("main", "KylinWeather"));
+        parser.addHelpOption();
+        parser.addVersionOption();
+        parser.parse(a.arguments());
+        if (parser.isSet(QStringLiteral("version"))) {
+            std::fputs(qPrintable(QCoreApplication::applicationVersion()), stdout);
+            std::fputc('\n', stdout);
+            return 0;
+        }
+        if (parser.isSet(QStringLiteral("help"))) {
+            std::fputs(qPrintable(parser.helpText()), stdout);
+            return 0;
+        }
+    }
+
 //    responseCommand(a);//响应外部DBus命令
     if(onlyOne(a))return 0;
-    setAttribute(a);//设置属性
 
     //和风天气凭据检查：缺失时仅告警并跳过后续天气请求（配置方式见 README「和风天气凭据配置」）
     if (QWeather::apiKey().isEmpty()) {
@@ -175,7 +205,13 @@ int main(int argc, char *argv[])
 //        w.show();
         w.handleIconClickedSub();
     }
-    qDebug()<<"建立DBus服务成功： "<< (connection.registerService("com.kylin.weather")&&connection.registerObject("/com/kylin/weather", &w));
+    const bool dbusRegistered = connection.registerService("com.kylin.weather")
+                                && connection.registerObject("/com/kylin/weather", &w);
+    if (dbusRegistered) {
+        qDebug() << "建立DBus服务成功";
+    } else {
+        qWarning() << "建立DBus服务失败：" << connection.lastError().message();
+    }
 
     return a.exec();
 }

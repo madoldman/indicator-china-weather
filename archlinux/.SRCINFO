@@ -1,7 +1,7 @@
 pkgbase = indicator-china-weather
-	pkgdesc = Indicator that displays China weather information
+	pkgdesc = Indicator that displays China weather information (with a Plasma 6 weather widget)
 	pkgver = 3.1.2
-	pkgrel = 1
+	pkgrel = 20260913095742
 	url = https://github.com/madoldman/indicator-china-weather
 	arch = x86_64
 	license = GPL
@@ -9,11 +9,12 @@ pkgbase = indicator-china-weather
 	makedepends = cmake
 	makedepends = extra-cmake-modules
 	makedepends = qt6-tools
-	depends = geoip
 	depends = qt6-base
+	depends = qt6-declarative
 	depends = gsettings-qt6
 	depends = kwindowsystem
-	source = indicator-china-weather::git+file:///home/madoldman/Projects/indicator-china-weather/archlinux/..#branch=archlinux
+	optdepends = plasma-workspace: Plasma 桌面小部件（Plasmoid）运行环境
+	source = indicator-china-weather::git+file://$startdir/..#branch=archlinux
 	sha512sums = SKIP
 
 pkgname = indicator-china-weather

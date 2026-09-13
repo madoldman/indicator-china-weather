@@ -3,6 +3,10 @@
 # Project created by QtCreator 2019-08-10T17:28:11
 #
 #-------------------------------------------------
+# 注意：本 qmake 工程为 Qt5/Debian(UKUI) 打包的遗留构建入口（下方无条件依赖
+# x11extras 等 Qt6 已移除的模块，无法用 Qt6 构建）；本仓库 Arch 分支的构建
+# 与打包走根 CMakeLists.txt，本文件仅随 Debian 侧维护，源码清单与安装路径
+# 保持与 CMake 工程一致
 QT       += network dbus x11extras
 include(src/qtsingleapplication/qtsingleapplication.pri)
 isEqual(QT_MAJOR_VERSION, 5) {
@@ -19,7 +23,7 @@ target.path = /usr/bin
 qm_files.files = translations/*.qm
 qm_files.path = /usr/share/indicator-china-weather/translations/
 
-icons.files += res/indicator-china-weather.png
+icons.files += res/control_icons/indicator-china-weather.png
 icons.path = /usr/share/pixmaps/
 
 appdesktop.files += indicator-china-weather.desktop
@@ -42,9 +46,15 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # 源码中 ukui-log4qt 相关调用以 ENABLE_UKUI_LOG4QT 包裹，qmake 构建保持原有行为
 DEFINES += ENABLE_UKUI_LOG4QT
 
+# 版本号与根 CMakeLists 的 project(VERSION) 保持一致（CMake 侧以
+# APP_VERSION="${PROJECT_VERSION}" 注入），main.cpp 读取该宏展示 --version
+DEFINES += APP_VERSION=\\\"3.1.2\\\"
+
 LIBS += -lpthread
 LIBS += -lX11
 LIBS += -lukui-log4qt
+
+# GeoIP 依赖已移除（libgeoip 上游废弃，IP 定位改走 HTTP API）
 
 # You can also make your code fail to compile if you use deprecated APIs.
 # In order to do so, uncomment the following line.
@@ -56,9 +66,6 @@ CONFIG += qt warn_on
 CONFIG += release
 CONFIG += link_pkgconfig
 PKGCONFIG += gsettings-qt
-#PKGCONFIG += geoip
-
-LIBS += -lGeoIP
 
 QMAKE_CPPFLAGS *= $(shell dpkg-buildflags --get CPPFLAGS)
 QMAKE_CFLAGS   *= $(shell dpkg-buildflags --get CFLAGS)
